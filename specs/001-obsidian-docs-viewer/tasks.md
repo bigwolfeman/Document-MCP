@@ -182,13 +182,13 @@ The MVP delivers immediate value:
 
 **Goal**: Enhanced search ranking and index health monitoring.
 
-- [ ] [T112] [US5] Update backend/src/services/indexer.py search_notes to calculate recency bonus: +1.0 for updated in last 7 days, +0.5 for last 30 days, 0 otherwise
-- [ ] [T113] [US5] Update backend/src/services/indexer.py search_notes to calculate final score: (3 * title_bm25) + (1 * body_bm25) + recency_bonus
+- [x] [T112] [US5] Update backend/src/services/indexer.py search_notes to calculate recency bonus: +1.0 for updated in last 7 days, +0.5 for last 30 days, 0 otherwise
+- [x] [T113] [US5] Update backend/src/services/indexer.py search_notes to calculate final score: (3 * title_bm25) + (1 * body_bm25) + recency_bonus
 - [x] [T114] [US5] Create backend/src/api/routes/index.py with GET /api/index/health endpoint: query index_health, return IndexHealth from http-api.yaml
 - [x] [T115] [US5] Create backend/src/api/routes/index.py with POST /api/index/rebuild endpoint: call IndexerService.rebuild_index, return RebuildResponse from http-api.yaml
 - [x] [T116] [US5] Create backend/src/services/indexer.py IndexerService.rebuild_index method: delete all user rows, walk vault, parse all notes, re-insert into all index tables, update index_health
-- [ ] [T117] [US5] Create frontend/src/services/api.ts getIndexHealth function: GET /api/index/health, return IndexHealth
-- [ ] [T118] [US5] Create frontend/src/services/api.ts rebuildIndex function: POST /api/index/rebuild, return RebuildResponse
+- [x] [T117] [US5] Create frontend/src/services/api.ts getIndexHealth function: GET /api/index/health, return IndexHealth
+- [x] [T118] [US5] Create frontend/src/services/api.ts rebuildIndex function: POST /api/index/rebuild, return RebuildResponse
 - [x] [T119] [US5] Add index health indicator to frontend/src/pages/MainApp.tsx: display note count and last updated timestamp in footer
 - [x] [T120] [US5] Add "Rebuild Index" button to frontend/src/pages/Settings.tsx: onClick → call rebuildIndex, show progress/completion message
 
