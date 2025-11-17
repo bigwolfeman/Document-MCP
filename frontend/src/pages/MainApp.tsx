@@ -3,7 +3,8 @@
  * Loads directory tree on mount and note + backlinks when path changes
  */
 import { useState, useEffect } from 'react';
-import { Plus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Settings as SettingsIcon } from 'lucide-react';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -22,6 +23,7 @@ import type { Note, NoteSummary } from '@/types/note';
 import { normalizeSlug } from '@/lib/wikilink';
 
 export function MainApp() {
+  const navigate = useNavigate();
   const [notes, setNotes] = useState<NoteSummary[]>([]);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [currentNote, setCurrentNote] = useState<Note | null>(null);
@@ -134,6 +136,9 @@ export function MainApp() {
             <Button variant="outline" size="sm" disabled>
               <Plus className="h-4 w-4 mr-2" />
               New Note
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/settings')}>
+              <SettingsIcon className="h-4 w-4" />
             </Button>
           </div>
         </div>

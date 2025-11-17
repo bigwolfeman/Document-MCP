@@ -168,11 +168,11 @@ The MVP delivers immediate value:
 - [ ] [T102] [US4] Update backend/src/services/indexer.py to scope all queries by user_id: WHERE user_id = ?
 - [ ] [T103] [US4] Initialize vault and index on first user login: create vault dir, insert initial index_health row
 - [ ] [T104] [US4] Create backend/src/mcp/server.py HTTP transport mode: FastMCP with http transport, BearerAuth validation, extract user_id from JWT
-- [ ] [T105] [US4] Create frontend/src/services/auth.ts with login function: redirect to /auth/login
-- [ ] [T106] [US4] Create frontend/src/services/auth.ts with getCurrentUser function: GET /api/me, return User
-- [ ] [T107] [US4] Create frontend/src/services/auth.ts with getToken function: POST /api/tokens, return TokenResponse, store token in memory
-- [ ] [T108] [US4] Create frontend/src/pages/Login.tsx: "Sign in with Hugging Face" button → onClick call auth.login()
-- [ ] [T109] [US4] Create frontend/src/pages/Settings.tsx: display user profile (user_id, HF avatar), API token with copy button for MCP config
+- [x] [T105] [US4] Create frontend/src/services/auth.ts with login function: redirect to /auth/login
+- [x] [T106] [US4] Create frontend/src/services/auth.ts with getCurrentUser function: GET /api/me, return User
+- [x] [T107] [US4] Create frontend/src/services/auth.ts with getToken function: POST /api/tokens, return TokenResponse, store token in memory
+- [x] [T108] [US4] Create frontend/src/pages/Login.tsx: "Sign in with Hugging Face" button → onClick call auth.login()
+- [x] [T109] [US4] Create frontend/src/pages/Settings.tsx: display user profile (user_id, HF avatar), API token with copy button for MCP config
 - [ ] [T110] [US4] Update frontend/src/pages/App.tsx to call getCurrentUser on mount, redirect to Login if 401
 - [ ] [T111] [US4] Update frontend/src/services/api.ts to include token from auth.getToken() in Authorization header
 
@@ -190,7 +190,7 @@ The MVP delivers immediate value:
 - [ ] [T117] [US5] Create frontend/src/services/api.ts getIndexHealth function: GET /api/index/health, return IndexHealth
 - [ ] [T118] [US5] Create frontend/src/services/api.ts rebuildIndex function: POST /api/index/rebuild, return RebuildResponse
 - [ ] [T119] [US5] Add index health indicator to frontend/src/pages/App.tsx: display note count and last updated timestamp in footer
-- [ ] [T120] [US5] Add "Rebuild Index" button to frontend/src/pages/Settings.tsx: onClick → call rebuildIndex, show progress/completion message
+- [x] [T120] [US5] Add "Rebuild Index" button to frontend/src/pages/Settings.tsx: onClick → call rebuildIndex, show progress/completion message
 
 ---
 
