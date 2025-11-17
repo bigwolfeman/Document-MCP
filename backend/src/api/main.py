@@ -79,13 +79,10 @@ app.include_router(notes.router, tags=["notes"])
 app.include_router(search.router, tags=["search"])
 app.include_router(index.router, tags=["index"])
 
-# Mount MCP HTTP endpoint
-try:
-    from ..mcp.server import mcp
-    app.mount("/mcp", mcp.get_asgi_app())
-    logger.info("MCP HTTP endpoint mounted at /mcp")
-except Exception as e:
-    logger.warning(f"Failed to mount MCP HTTP endpoint: {e}")
+# Note: FastMCP HTTP mode is typically run as a separate server
+# For HF Space deployment, MCP is primarily used via STDIO in local development
+# To use MCP HTTP, run: fastmcp run backend.src.mcp.server:mcp --port 8001
+logger.info("MCP server available for STDIO mode (local development)")
 
 
 @app.get("/health")
@@ -94,11 +91,26 @@ async def health():
     return {"status": "healthy"}
 
 
-# Serve frontend static files (must be last to not override API routes)
+# Serve frontend static files with SPA support (must be last to not override API routes)
+from fastapi.responses import FileResponse
+
 frontend_dist = Path(__file__).resolve().parents[3] / "frontend" / "dist"
 if frontend_dist.exists():
-    app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="static")
-    logger.info(f"Serving frontend from: {frontend_dist}")
+    # Mount static assets
+    app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
+    
+    # Catch-all route for SPA - serve index.html for all non-API routes
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """Serve the SPA for all non-API routes."""
+        # If the path looks like a file (has extension), try to serve it
+        file_path = frontend_dist / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        # Otherwise serve index.html for SPA routing
+        return FileResponse(frontend_dist / "index.html")
+    
+    logger.info(f"Serving frontend SPA from: {frontend_dist}")
 else:
     logger.warning(f"Frontend dist not found at: {frontend_dist}")
     

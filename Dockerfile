@@ -17,7 +17,7 @@ COPY frontend/ frontend/
 RUN cd frontend && npm run build
 
 # Install Python dependencies
-COPY backend/pyproject.toml backend/setup.py backend/README.md backend/
+COPY backend/pyproject.toml backend/README.md backend/
 RUN pip install --no-cache-dir -e backend/
 
 # Copy backend source

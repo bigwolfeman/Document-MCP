@@ -123,9 +123,14 @@ export function Settings() {
 
         {/* Profile */}
         <Card>
-          <CardHeader>
-            <CardTitle>Profile</CardTitle>
-            <CardDescription>Your account information</CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <div>
+              <CardTitle>Profile</CardTitle>
+              <CardDescription>Your account information</CardDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={logout}>
+              Sign Out
+            </Button>
           </CardHeader>
           <CardContent>
             {user ? (
