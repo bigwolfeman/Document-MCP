@@ -115,25 +115,25 @@ The MVP delivers immediate value:
 - [ ] [T063] [US2] Create backend/src/api/routes/search.py with GET /api/backlinks/{path} endpoint: URL-decode path, query note_links, return BacklinkResult[] from http-api.yaml
 - [ ] [T064] [US2] Create backend/src/api/routes/search.py with GET /api/tags endpoint: query note_tags, return Tag[] from http-api.yaml
 - [ ] [T065] [US2] Create backend/src/api/main.py FastAPI app with CORS middleware, mount routes, include error handlers
-- [ ] [T066] [US2] Create frontend/src/services/api.ts API client with fetch wrapper: add Authorization: Bearer header, handle JSON responses, throw APIError on non-200
-- [ ] [T067] [US2] Create frontend/src/services/api.ts listNotes function: GET /api/notes?folder=, return NoteSummary[]
-- [ ] [T068] [US2] Create frontend/src/services/api.ts getNote function: GET /api/notes/{encodeURIComponent(path)}, return Note
-- [ ] [T069] [US2] Create frontend/src/services/api.ts searchNotes function: GET /api/search?q=, return SearchResult[]
-- [ ] [T070] [US2] Create frontend/src/services/api.ts getBacklinks function: GET /api/backlinks/{encodeURIComponent(path)}, return BacklinkResult[]
-- [ ] [T071] [US2] Create frontend/src/services/api.ts getTags function: GET /api/tags, return Tag[]
-- [ ] [T072] [US2] Create frontend/src/lib/wikilink.ts with extractWikilinks function: regex /\[\[([^\]]+)\]\]/g
-- [ ] [T073] [US2] Create frontend/src/lib/wikilink.ts with normalizeSlug function: lowercase, replace spaces/underscores with dash, strip non-alphanumeric
-- [ ] [T074] [US2] Create frontend/src/lib/markdown.ts with react-markdown config: code highlighting, wikilink custom renderer
-- [ ] [T075] [US2] Initialize shadcn/ui in frontend/: run npx shadcn-ui@latest init, select default theme
-- [ ] [T076] [US2] Install shadcn/ui components: ScrollArea, Button, Input, Card, Badge
-- [ ] [T077] [US2] Create frontend/src/components/DirectoryTree.tsx: recursive tree view with collapsible folders, leaf items for notes, onClick handler to load note
-- [ ] [T078] [US2] Create frontend/src/components/NoteViewer.tsx: render note title, metadata (tags as badges, timestamps), react-markdown body with wikilink links, backlinks section in footer
-- [ ] [T079] [US2] Create frontend/src/components/SearchBar.tsx: Input with debounced onChange (300ms), dropdown results with onClick to navigate to note
-- [ ] [T080] [US2] Create frontend/src/pages/App.tsx: two-pane layout (left: DirectoryTree + SearchBar in ScrollArea, right: NoteViewer), state management for selected note path
-- [ ] [T081] [US2] Add wikilink click handler in NoteViewer: onClick [[link]] → normalizeSlug → API lookup → navigate to resolved note
-- [ ] [T082] [US2] Add broken wikilink styling in NoteViewer: render unresolved [[links]] with distinct color/style
-- [ ] [T083] [US2] Create frontend/src/pages/App.tsx useEffect to load directory tree on mount: call listNotes()
-- [ ] [T084] [US2] Create frontend/src/pages/App.tsx useEffect to load note when path changes: call getNote(path) and getBacklinks(path)
+- [x] [T066] [US2] Create frontend/src/services/api.ts API client with fetch wrapper: add Authorization: Bearer header, handle JSON responses, throw APIError on non-200
+- [x] [T067] [US2] Create frontend/src/services/api.ts listNotes function: GET /api/notes?folder=, return NoteSummary[]
+- [x] [T068] [US2] Create frontend/src/services/api.ts getNote function: GET /api/notes/{encodeURIComponent(path)}, return Note
+- [x] [T069] [US2] Create frontend/src/services/api.ts searchNotes function: GET /api/search?q=, return SearchResult[]
+- [x] [T070] [US2] Create frontend/src/services/api.ts getBacklinks function: GET /api/backlinks/{encodeURIComponent(path)}, return BacklinkResult[]
+- [x] [T071] [US2] Create frontend/src/services/api.ts getTags function: GET /api/tags, return Tag[]
+- [x] [T072] [US2] Create frontend/src/lib/wikilink.ts with extractWikilinks function: regex /\[\[([^\]]+)\]\]/g
+- [x] [T073] [US2] Create frontend/src/lib/wikilink.ts with normalizeSlug function: lowercase, replace spaces/underscores with dash, strip non-alphanumeric
+- [x] [T074] [US2] Create frontend/src/lib/markdown.tsx with react-markdown config: code highlighting, wikilink custom renderer
+- [x] [T075] [US2] Initialize shadcn/ui in frontend/: run npx shadcn@latest init, select default theme
+- [x] [T076] [US2] Install shadcn/ui components: ScrollArea, Button, Input, Card, Badge, Resizable, Collapsible, Dialog, Alert, Textarea, Dropdown-Menu, Avatar, Command, Tooltip, Popover
+- [x] [T077] [US2] Create frontend/src/components/DirectoryTree.tsx: recursive tree view with collapsible folders, leaf items for notes, onClick handler to load note
+- [x] [T078] [US2] Create frontend/src/components/NoteViewer.tsx: render note title, metadata (tags as badges, timestamps), react-markdown body with wikilink links, backlinks section in footer
+- [x] [T079] [US2] Create frontend/src/components/SearchBar.tsx: Input with debounced onChange (300ms), dropdown results with onClick to navigate to note
+- [x] [T080] [US2] Create frontend/src/pages/MainApp.tsx: two-pane layout (left: DirectoryTree + SearchBar in ScrollArea, right: NoteViewer), state management for selected note path
+- [x] [T081] [US2] Add wikilink click handler in NoteViewer: onClick [[link]] → normalizeSlug → API lookup → navigate to resolved note
+- [x] [T082] [US2] Add broken wikilink styling in NoteViewer: render unresolved [[links]] with distinct color/style
+- [x] [T083] [US2] Create frontend/src/pages/MainApp.tsx useEffect to load directory tree on mount: call listNotes()
+- [x] [T084] [US2] Create frontend/src/pages/MainApp.tsx useEffect to load note when path changes: call getNote(path) and getBacklinks(path)
 
 ---
 

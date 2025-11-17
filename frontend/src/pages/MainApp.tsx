@@ -1,0 +1,215 @@
+/**
+ * T080, T083-T084: Main application layout with two-pane design
+ * Loads directory tree on mount and note + backlinks when path changes
+ */
+import { useState, useEffect } from 'react';
+import { Plus } from 'lucide-react';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { DirectoryTree } from '@/components/DirectoryTree';
+import { SearchBar } from '@/components/SearchBar';
+import { NoteViewer } from '@/components/NoteViewer';
+import {
+  listNotes,
+  getNote,
+  getBacklinks,
+  type BacklinkResult,
+  APIException,
+} from '@/services/api';
+import type { Note, NoteSummary } from '@/types/note';
+import { normalizeSlug } from '@/lib/wikilink';
+
+export function MainApp() {
+  const [notes, setNotes] = useState<NoteSummary[]>([]);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [currentNote, setCurrentNote] = useState<Note | null>(null);
+  const [backlinks, setBacklinks] = useState<BacklinkResult[]>([]);
+  const [isLoadingNotes, setIsLoadingNotes] = useState(true);
+  const [isLoadingNote, setIsLoadingNote] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // T083: Load directory tree on mount
+  useEffect(() => {
+    const loadNotes = async () => {
+      setIsLoadingNotes(true);
+      setError(null);
+      try {
+        const notesList = await listNotes();
+        setNotes(notesList);
+        
+        // Auto-select first note if available
+        if (notesList.length > 0 && !selectedPath) {
+          setSelectedPath(notesList[0].note_path);
+        }
+      } catch (err) {
+        if (err instanceof APIException) {
+          setError(err.error);
+        } else {
+          setError('Failed to load notes');
+        }
+        console.error('Error loading notes:', err);
+      } finally {
+        setIsLoadingNotes(false);
+      }
+    };
+
+    loadNotes();
+  }, []);
+
+  // T084: Load note and backlinks when path changes
+  useEffect(() => {
+    if (!selectedPath) {
+      setCurrentNote(null);
+      setBacklinks([]);
+      return;
+    }
+
+    const loadNote = async () => {
+      setIsLoadingNote(true);
+      setError(null);
+      try {
+        const [note, noteBacklinks] = await Promise.all([
+          getNote(selectedPath),
+          getBacklinks(selectedPath),
+        ]);
+        setCurrentNote(note);
+        setBacklinks(noteBacklinks);
+      } catch (err) {
+        if (err instanceof APIException) {
+          setError(err.error);
+        } else {
+          setError('Failed to load note');
+        }
+        console.error('Error loading note:', err);
+        setCurrentNote(null);
+        setBacklinks([]);
+      } finally {
+        setIsLoadingNote(false);
+      }
+    };
+
+    loadNote();
+  }, [selectedPath]);
+
+  // Handle wikilink clicks
+  const handleWikilinkClick = async (linkText: string) => {
+    const slug = normalizeSlug(linkText);
+    
+    // Try to find exact match first
+    let targetNote = notes.find(
+      (note) => normalizeSlug(note.title) === slug
+    );
+
+    // If not found, try path-based matching
+    if (!targetNote) {
+      targetNote = notes.find((note) => {
+        const pathSlug = normalizeSlug(note.note_path.replace(/\.md$/, ''));
+        return pathSlug.endsWith(slug);
+      });
+    }
+
+    if (targetNote) {
+      setSelectedPath(targetNote.note_path);
+    } else {
+      // TODO: Show "Create note" dialog
+      console.log('Note not found for wikilink:', linkText);
+      setError(`Note not found: ${linkText}`);
+    }
+  };
+
+  const handleSelectNote = (path: string) => {
+    setSelectedPath(path);
+    setError(null);
+  };
+
+  return (
+    <div className="h-screen flex flex-col">
+      {/* Top bar */}
+      <div className="border-b border-border p-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold">📚 Document Viewer</h1>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled>
+              <Plus className="h-4 w-4 mr-2" />
+              New Note
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div className="flex-1 overflow-hidden">
+        <ResizablePanelGroup direction="horizontal">
+          {/* Left sidebar */}
+          <ResizablePanel defaultSize={25} minSize={15} maxSize={40}>
+            <div className="h-full flex flex-col">
+              <div className="p-4 space-y-4">
+                <SearchBar onSelectNote={handleSelectNote} />
+                <Separator />
+              </div>
+              <div className="flex-1 overflow-hidden">
+                {isLoadingNotes ? (
+                  <div className="p-4 text-center text-sm text-muted-foreground">
+                    Loading notes...
+                  </div>
+                ) : (
+                  <DirectoryTree
+                    notes={notes}
+                    selectedPath={selectedPath || undefined}
+                    onSelectNote={handleSelectNote}
+                  />
+                )}
+              </div>
+            </div>
+          </ResizablePanel>
+
+          <ResizableHandle withHandle />
+
+          {/* Main content pane */}
+          <ResizablePanel defaultSize={75}>
+            <div className="h-full bg-background">
+              {error && (
+                <div className="p-4">
+                  <Alert variant="destructive">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                </div>
+              )}
+
+              {isLoadingNote ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-muted-foreground">Loading note...</div>
+                </div>
+              ) : currentNote ? (
+                <NoteViewer
+                  note={currentNote}
+                  backlinks={backlinks}
+                  onWikilinkClick={handleWikilinkClick}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center text-muted-foreground">
+                    <p className="text-lg mb-2">Select a note to view</p>
+                    <p className="text-sm">
+                      {notes.length === 0
+                        ? 'No notes available. Create your first note to get started.'
+                        : 'Choose a note from the sidebar'}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      </div>
+
+      {/* Footer */}
+      <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
+        {notes.length} note{notes.length !== 1 ? 's' : ''} indexed
+      </div>
+    </div>
+  );
+}
+
