@@ -9,12 +9,13 @@ from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from ...services.config import get_config
 from ...services.seed import ensure_welcome_note
+from ..middleware import extract_user_id_from_jwt
 
 logger = logging.getLogger(__name__)
 
@@ -271,25 +272,23 @@ async def callback(
 
 
 @router.get("/api/me", response_model=UserInfo)
-async def get_current_user(request: Request):
-    """Get current authenticated user information."""
-    # Extract user_id from request state (set by auth middleware)
-    from ..middleware.auth import get_user_id
-    
-    try:
-        user_id = get_user_id()
-        
-        # In a real app, we might fetch more user details from DB
-        # For now, just return the user_id
-        return UserInfo(
-            user_id=user_id,
-            username=user_id,  # username is same as user_id in our system
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=401,
-            detail="Not authenticated"
-        )
+async def get_current_user(user_id: str = Depends(extract_user_id_from_jwt)):
+    """Return basic profile data for the authenticated user."""
+    if user_id == "local-dev":
+        return UserInfo(user_id="local-dev", username="local-dev")
+
+    # Derive a friendly username if possible
+    username = user_id
+    email = None
+
+    if user_id.startswith("hf-"):
+        username = user_id[len("hf-") :]
+
+    return UserInfo(
+        user_id=user_id,
+        username=username,
+        email=email,
+    )
 
 
 __all__ = ["router"]

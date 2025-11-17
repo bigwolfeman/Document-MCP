@@ -19,7 +19,7 @@ def _unauthorized(message: str, error: str = "unauthorized") -> HTTPException:
 
 
 def extract_user_id_from_jwt(
-    authorization: Annotated[Optional[str], Header(default=None, alias="Authorization")] = None,
+    authorization: Annotated[Optional[str], Header(alias="Authorization")] = None,
 ) -> str:
     """
     Extract and validate the user_id from a Bearer token.
