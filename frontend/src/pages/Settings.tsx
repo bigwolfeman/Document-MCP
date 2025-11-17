@@ -203,13 +203,19 @@ export function Settings() {
     "obsidian-docs": {
       "command": "python",
       "args": ["-m", "backend.src.mcp.server"],
+      "cwd": "/path/to/Document-MCP",
       "env": {
-        "BEARER_TOKEN": "${apiToken || 'YOUR_TOKEN_HERE'}"
+        "BEARER_TOKEN": "${apiToken || 'YOUR_TOKEN_HERE'}",
+        "FASTMCP_SHOW_CLI_BANNER": "false",
+        "PYTHONPATH": "/path/to/Document-MCP"
       }
     }
   }
 }`}
               </pre>
+              <p className="text-xs text-muted-foreground mt-2">
+                💡 Replace <code className="bg-muted px-1 rounded">/path/to/Document-MCP</code> with your actual project path
+              </p>
             </div>
           </CardContent>
         </Card>

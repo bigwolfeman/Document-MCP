@@ -12,6 +12,7 @@ from .database import DatabaseService
 from .vault import VaultNote
 
 WIKILINK_PATTERN = re.compile(r"\[\[([^\]]+)\]\]")
+WHITESPACE_RE = re.compile(r"\s+")
 
 
 def _utcnow_iso() -> str:
@@ -33,6 +34,45 @@ def normalize_tag(tag: str | None) -> str:
     if not isinstance(tag, str):
         return ""
     return tag.strip().lower()
+
+
+def _prepare_match_query(query: str) -> str:
+    """
+    Sanitize user-supplied query text for FTS5 MATCH usage.
+
+    - Splits on whitespace to keep simple keyword semantics.
+    - Wraps each token in double quotes to neutralize punctuation (e.g., apostrophes).
+    - Escapes embedded double quotes by doubling them.
+    - Preserves trailing '*' characters for prefix searches.
+    """
+    tokens = [token for token in WHITESPACE_RE.split(query or "") if token.strip()]
+    sanitized_terms: List[str] = []
+
+    for token in tokens:
+        cleaned = token.strip()
+        suffix = ""
+        while cleaned.endswith("*"):
+            suffix += "*"
+            cleaned = cleaned[:-1]
+
+        # Remove wrapping quotes if present; inner quotes are preserved/escaped below.
+        if cleaned.startswith('"') and cleaned.endswith('"') and len(cleaned) >= 2:
+            cleaned = cleaned[1:-1]
+        if cleaned.startswith("'") and cleaned.endswith("'") and len(cleaned) >= 2:
+            cleaned = cleaned[1:-1]
+
+        cleaned = cleaned.strip()
+        if not cleaned:
+            continue
+
+        escaped = cleaned.replace('"', '""')
+        term = f'"{escaped}"{suffix}'
+        sanitized_terms.append(term)
+
+    if not sanitized_terms:
+        raise ValueError("Search query must contain alphanumeric characters")
+
+    return " ".join(sanitized_terms)
 
 
 class IndexerService:
@@ -241,6 +281,8 @@ class IndexerService:
         if not query or not query.strip():
             raise ValueError("Search query cannot be empty")
 
+        sanitized_query = _prepare_match_query(query)
+
         conn = self.db_service.connect()
         try:
             rows = conn.execute(
@@ -257,7 +299,7 @@ class IndexerService:
                 ORDER BY score DESC
                 LIMIT ?
                 """,
-                (user_id, query, limit),
+                (user_id, sanitized_query, limit),
             ).fetchall()
         finally:
             conn.close()
