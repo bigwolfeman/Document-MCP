@@ -137,6 +137,13 @@ export async function getTags(): Promise<Tag[]> {
 /**
  * T071: Update a note
  */
+export async function createNote(data: NoteCreateRequest): Promise<Note> {
+  return apiFetch<Note>('/api/notes', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 export async function updateNote(
   path: string,
   data: NoteUpdateRequest

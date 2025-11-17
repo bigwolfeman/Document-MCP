@@ -8,7 +8,7 @@ from urllib.parse import unquote
 
 from fastapi import APIRouter, HTTPException, Query
 
-from ...models.note import Note, NoteSummary, NoteUpdate
+from ...models.note import Note, NoteSummary, NoteUpdate, NoteCreate
 from ...services.database import DatabaseService
 from ...services.indexer import IndexerService
 from ...services.vault import VaultService
@@ -55,6 +55,82 @@ async def list_notes(folder: Optional[str] = Query(None, description="Optional f
         return summaries
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list notes: {str(e)}")
+
+
+@router.post("/api/notes", response_model=Note, status_code=201)
+async def create_note(create: NoteCreate):
+    """Create a new note."""
+    user_id = get_user_id()
+    vault_service = VaultService()
+    indexer_service = IndexerService()
+    db_service = DatabaseService()
+    
+    try:
+        note_path = create.note_path
+        
+        # Check if note already exists
+        try:
+            vault_service.read_note(user_id, note_path)
+            raise HTTPException(status_code=409, detail=f"Note already exists: {note_path}")
+        except FileNotFoundError:
+            pass  # Good, note doesn't exist
+        
+        # Prepare metadata
+        metadata = create.metadata.model_dump() if create.metadata else {}
+        if create.title:
+            metadata["title"] = create.title
+        
+        # Write note to vault
+        written_note = vault_service.write_note(
+            user_id,
+            note_path,
+            body=create.body,
+            metadata=metadata,
+            title=create.title
+        )
+        
+        # Index the note
+        new_version = indexer_service.index_note(user_id, written_note)
+        
+        # Update index health
+        conn = db_service.connect()
+        try:
+            with conn:
+                indexer_service.update_index_health(conn, user_id)
+        finally:
+            conn.close()
+        
+        # Return created note
+        created = written_note["metadata"].get("created")
+        updated_ts = written_note["metadata"].get("updated")
+        
+        if isinstance(created, str):
+            created = datetime.fromisoformat(created.replace("Z", "+00:00"))
+        elif not isinstance(created, datetime):
+            created = datetime.now()
+            
+        if isinstance(updated_ts, str):
+            updated_ts = datetime.fromisoformat(updated_ts.replace("Z", "+00:00"))
+        elif not isinstance(updated_ts, datetime):
+            updated_ts = created
+        
+        return Note(
+            user_id=user_id,
+            note_path=note_path,
+            version=new_version,
+            title=written_note["title"],
+            metadata=written_note["metadata"],
+            body=written_note["body"],
+            created=created,
+            updated=updated_ts,
+            size_bytes=written_note.get("size_bytes", len(written_note["body"].encode("utf-8"))),
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create note: {str(e)}")
 
 
 @router.get("/api/notes/{path:path}", response_model=Note)
@@ -151,7 +227,13 @@ async def update_note(path: str, update: NoteUpdate):
             metadata["title"] = update.title
         
         # Write note to vault
-        written_note = vault_service.write_note(user_id, note_path, update.body, metadata)
+        written_note = vault_service.write_note(
+            user_id, 
+            note_path, 
+            body=update.body, 
+            metadata=metadata,
+            title=update.title
+        )
         
         # Index the note
         new_version = indexer_service.index_note(user_id, written_note)

@@ -18,9 +18,20 @@ import {
   getNote,
   getBacklinks,
   getIndexHealth,
+  createNote,
   type BacklinkResult,
   APIException,
 } from '@/services/api';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import type { IndexHealth } from '@/types/search';
 import type { Note, NoteSummary } from '@/types/note';
 import { normalizeSlug } from '@/lib/wikilink';
@@ -36,6 +47,8 @@ export function MainApp() {
   const [error, setError] = useState<string | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [indexHealth, setIndexHealth] = useState<IndexHealth | null>(null);
+  const [isNewNoteDialogOpen, setIsNewNoteDialogOpen] = useState(false);
+  const [newNoteName, setNewNoteName] = useState('');
 
   // T083: Load directory tree on mount
   // T119: Load index health
@@ -158,6 +171,39 @@ export function MainApp() {
     setIsEditMode(false);
   };
 
+  // Handle create new note
+  const handleCreateNote = async () => {
+    if (!newNoteName.trim()) return;
+    
+    try {
+      const notePath = newNoteName.endsWith('.md') ? newNoteName : `${newNoteName}.md`;
+      const note = await createNote({
+        note_path: notePath,
+        title: newNoteName.replace(/\.md$/, ''),
+        body: `# ${newNoteName.replace(/\.md$/, '')}\n\nStart writing your note here...`,
+      });
+      
+      // Refresh notes list
+      const notesList = await listNotes();
+      setNotes(notesList);
+      
+      // Select the new note
+      setSelectedPath(note.note_path);
+      setIsNewNoteDialogOpen(false);
+      setNewNoteName('');
+      
+      // Switch to edit mode for the new note
+      setIsEditMode(true);
+    } catch (err) {
+      if (err instanceof APIException) {
+        setError(err.error);
+      } else {
+        setError('Failed to create note');
+      }
+      console.error('Error creating note:', err);
+    }
+  };
+
   return (
     <div className="h-screen flex flex-col">
       {/* Top bar */}
@@ -165,10 +211,45 @@ export function MainApp() {
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold">📚 Document Viewer</h1>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled>
-              <Plus className="h-4 w-4 mr-2" />
-              New Note
-            </Button>
+            <Dialog open={isNewNoteDialogOpen} onOpenChange={setIsNewNoteDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Note
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create New Note</DialogTitle>
+                  <DialogDescription>
+                    Enter a name for your new note. The .md extension will be added automatically if not provided.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <label htmlFor="note-name" className="text-sm font-medium">Note Name</label>
+                    <Input
+                      id="note-name"
+                      placeholder="my-note"
+                      value={newNoteName}
+                      onChange={(e) => setNewNoteName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleCreateNote();
+                        }
+                      }}
+                    />
+                  </div>
+                </div>                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsNewNoteDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleCreateNote} disabled={!newNoteName.trim()}>
+                    Create Note
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             <Button variant="ghost" size="sm" onClick={() => navigate('/settings')}>
               <SettingsIcon className="h-4 w-4" />
             </Button>
