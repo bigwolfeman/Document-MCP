@@ -114,12 +114,12 @@ Start the HTTP API server:
 cd backend
 JWT_SECRET_KEY="local-dev-secret-key-123" \
 VAULT_BASE_PATH="$(pwd)/../data/vaults" \
-.venv/bin/uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+.venv/bin/uvicorn src.api.main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-Backend will be available at: `http://localhost:8000`
+Backend will be available at: `http://localhost:8001`
 
-API docs (Swagger): `http://localhost:8000/docs`
+API docs (Swagger): `http://localhost:8001/docs`
 
 #### Running MCP Server (STDIO Mode)
 
@@ -332,7 +332,7 @@ write_note(
 - Verify database is initialized
 
 **Frontend shows connection errors:**
-- Ensure backend is running on port 8000
+- Ensure backend is running on port 8001
 - Check Vite proxy configuration in `frontend/vite.config.ts`
 
 **Search returns no results:**

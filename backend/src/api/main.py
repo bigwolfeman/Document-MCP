@@ -10,10 +10,15 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.routing import ASGIRoute
+from dotenv import load_dotenv
+
+load_dotenv()  # Add this line at the top, before other imports
+
+# from fastapi.routing import ASGIRoute
 from starlette.responses import Response
 
-from fastmcp.server.streamable_http import StreamableHTTPSessionManager
+from fastmcp.server.http import StreamableHTTPSessionManager
+from fastapi.responses import FileResponse
 
 from .routes import auth, index, notes, search
 from ..mcp.server import mcp
@@ -30,7 +35,11 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "https://huggingface.co"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://huggingface.co",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -137,34 +146,38 @@ async def health():
     return {"status": "healthy"}
 
 
-# Serve frontend static files with SPA support (must be last to not override API routes)
-from fastapi.responses import FileResponse
-
 frontend_dist = Path(__file__).resolve().parents[3] / "frontend" / "dist"
 if frontend_dist.exists():
     # Mount static assets
-    app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
-    
+    app.mount(
+        "/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets"
+    )
+
     # Catch-all route for SPA - serve index.html for all non-API routes
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         """Serve the SPA for all non-API routes."""
         # Don't intercept API or auth routes
-        if full_path.startswith(("api/", "auth/", "health", "mcp")):
+        if (
+            full_path.startswith(("api/", "auth/"))
+            or full_path == "health"
+            or full_path.startswith("mcp/")
+            or full_path == "mcp"
+        ):
             # Let FastAPI's 404 handler take over
             raise HTTPException(status_code=404, detail="Not found")
-        
+
         # If the path looks like a file (has extension), try to serve it
         file_path = frontend_dist / full_path
         if file_path.is_file():
             return FileResponse(file_path)
         # Otherwise serve index.html for SPA routing
         return FileResponse(frontend_dist / "index.html")
-    
+
     logger.info(f"Serving frontend SPA from: {frontend_dist}")
 else:
     logger.warning(f"Frontend dist not found at: {frontend_dist}")
-    
+
     # Fallback health endpoint if no frontend
     @app.get("/")
     async def root():
@@ -173,4 +186,3 @@ else:
 
 
 __all__ = ["app"]
-
