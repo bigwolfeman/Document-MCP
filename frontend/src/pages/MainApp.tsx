@@ -209,14 +209,14 @@ export function MainApp() {
       {/* Demo warning banner */}
       <Alert variant="destructive" className="rounded-none border-x-0 border-t-0">
         <AlertDescription className="text-center">
-          ⚠️ DEMO ONLY – ALL DATA IS TEMPORARY AND MAY BE DELETED AT ANY TIME
+          DEMO ONLY - ALL DATA IS TEMPORARY AND MAY BE DELETED AT ANY TIME
         </AlertDescription>
       </Alert>
       
       {/* Top bar */}
       <div className="border-b border-border p-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">📚 Document Viewer</h1>
+          <h1 className="text-xl font-semibold">Document Viewer</h1>
           <div className="flex gap-2">
             <Dialog open={isNewNoteDialogOpen} onOpenChange={setIsNewNoteDialogOpen}>
               <DialogTrigger asChild>

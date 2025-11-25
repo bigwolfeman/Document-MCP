@@ -28,11 +28,11 @@ mcp = FastMCP(
     "obsidian-docs-viewer",
     instructions=(
         "Multi-tenant vault tools. STDIO uses user_id 'local-dev'; HTTP mode must validate each "
-        "request with JWT.sub. Note paths must be relative '.md' ≤256 chars without '..' or '\\'. "
-        "Frontmatter is YAML: tags are string arrays and 'version' is reserved. Notes must be ≤1 MiB; "
+        "request with JWT.sub. Note paths must be relative '.md' files under 256 chars without '..' or '\\'. "
+        "Frontmatter is YAML: tags are string arrays and 'version' is reserved. Notes must be <=1 MiB; "
         "writes refresh created/updated timestamps and synchronously update the search index; deletes "
         "clear index rows and backlinks. Wikilinks use [[...]] slug matching (prefer same folder, else "
-        "lexicographic). Search ranking = bm25(title*3, body*1) + recency bonus (+1 ≤7d, +0.5 ≤30d)."
+        "lexicographic). Search ranking = bm25(title*3, body*1) + recency bonus (+1 if <=7d, +0.5 if <=30d)."
     ),
 )
 

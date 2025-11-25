@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Debug script to check which endpoints are working."""
 
-import platform
 import requests
 import json
 from urllib.parse import urljoin

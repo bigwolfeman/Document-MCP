@@ -237,7 +237,7 @@ export function Settings() {
 }`}
               </pre>
               <p className="text-xs text-muted-foreground mt-2">
-                💡 Replace <code className="bg-muted px-1 rounded">/absolute/path/to/Document-MCP</code> with your local checkout path
+                Replace <code className="bg-muted px-1 rounded">/absolute/path/to/Document-MCP</code> with your local checkout path
               </p>
             </div>
           </CardContent>
@@ -275,7 +275,7 @@ export function Settings() {
                 {rebuildResult && (
                   <Alert>
                     <AlertDescription>
-                      ✅ Index rebuilt successfully! Indexed {rebuildResult.notes_indexed} notes in {rebuildResult.duration_ms}ms
+                      Index rebuilt successfully! Indexed {rebuildResult.notes_indexed} notes in {rebuildResult.duration_ms}ms
                     </AlertDescription>
                   </Alert>
                 )}

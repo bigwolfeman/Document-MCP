@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 
 import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -26,10 +27,24 @@ from ..services.seed import init_and_seed
 
 logger = logging.getLogger(__name__)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan handler to run startup tasks."""
+    logger.info("Running startup: initializing database and seeding demo vault...")
+    try:
+        init_and_seed(user_id="demo-user")
+        logger.info("Startup complete: database and demo vault ready")
+    except Exception as exc:
+        logger.exception("Startup failed: %s", exc)
+        logger.error("App starting without demo data due to initialization error")
+    yield
+
+
 app = FastAPI(
     title="Document Viewer API",
     description="Multi-tenant Obsidian-like documentation system",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # CORS middleware
@@ -44,20 +59,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-# Startup event: Initialize database and seed demo data
-@app.on_event("startup")
-async def startup_event():
-    """Initialize database schema and seed demo vault on startup."""
-    logger.info("Running startup: initializing database and seeding demo vault...")
-    try:
-        init_and_seed(user_id="demo-user")
-        logger.info("Startup complete: database and demo vault ready")
-    except Exception as e:
-        logger.exception(f"Startup failed: {e}")
-        # Don't crash the app, but log the error
-        logger.error("App starting without demo data due to initialization error")
 
 
 # Error handlers
