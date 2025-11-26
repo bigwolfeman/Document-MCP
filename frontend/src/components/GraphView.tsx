@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import ForceGraph2D, { type ForceGraphMethods } from 'react-force-graph-2d';
+import { forceRadial } from 'd3-force';
 import type { GraphData, GraphNode } from '@/types/graph';
 import { getGraphData } from '@/services/api';
 import { Loader2, AlertCircle } from 'lucide-react';
@@ -72,6 +73,33 @@ export function GraphView({ onSelectNote }: GraphViewProps) {
     fetchData();
   }, []);
 
+  // Configure forces when data is loaded
+  useEffect(() => {
+    if (!isLoading && graphRef.current) {
+      // Configure forces
+      // Increase repulsion to spread out clusters
+      graphRef.current.d3Force('charge')?.strength(-400);
+      // Adjust link distance
+      graphRef.current.d3Force('link')?.distance(60);
+      
+      // Add "valence shell" for orphans (nodes with val=1)
+      // Pulls them to a ring at radius 300
+      graphRef.current.d3Force(
+        'valence', 
+        forceRadial(300, 0, 0).strength((node: any) => node.val === 1 ? 0.1 : 0)
+      );
+
+      // Add collision detection to prevent overlap
+      // @ts-ignore - d3 types might not be fully exposed
+      if (!graphRef.current.d3Force('collide')) {
+         // dynamic import of d3 would be needed to create new forces if not default
+      }
+      
+      // Warmup the engine
+      graphRef.current.d3ReheatSimulation();
+    }
+  }, [data, isLoading]);
+
   // Simple hash for categorical colors
   const getGroupColor = (group: string) => {
     let hash = 0;
@@ -124,15 +152,16 @@ export function GraphView({ onSelectNote }: GraphViewProps) {
         nodeLabel="label"
         nodeColor={(node: any) => node.group && node.group !== 'root' ? getGroupColor(node.group) : defaultNodeColor}
         linkColor={() => linkColor}
+        linkWidth={3} //width of links between nodes
         backgroundColor={backgroundColor}
         onNodeClick={handleNodeClick}
         nodeRelSize={6}
         linkDirectionalParticles={2}
-        linkDirectionalParticleSpeed={0.005}
+        linkDirectionalParticleWidth={7}
+        linkDirectionalParticleSpeed={0.0025}
         width={window.innerWidth * 0.75} // Approximate width, needs resize observer for true responsiveness
+
         height={window.innerHeight - 60} // Approximate height minus header
-        // Basic forces to keep structure
-        d3Force={('charge', -120)} 
       />
     </div>
   );
