@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Annotated
 
-from backend.src.models.graph import GraphData
-from backend.src.api.middleware import AuthContext, get_auth_context
-from backend.src.services.indexer import IndexerService
-from backend.src.services.database import DatabaseService
+from ...models.graph import GraphData
+from ..middleware import AuthContext, get_auth_context
+from ...services.indexer import IndexerService
+from ...services.database import DatabaseService
 
 router = APIRouter()
 
