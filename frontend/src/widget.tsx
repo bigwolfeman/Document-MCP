@@ -9,6 +9,7 @@ import { Loader2, AlertTriangle } from 'lucide-react';
 
 // Mock window.openai for development
 if (!window.openai) {
+  console.warn("Mocking window.openai (dev mode)");
   window.openai = {
     toolOutput: null
   };
@@ -127,9 +128,25 @@ const WidgetApp = () => {
         )}
 
         {view === 'error' && (
-          <div className="p-4 text-destructive">
-            <h2 className="font-bold">Error</h2>
-            <p>{error}</p>
+          <div className="p-4 text-destructive flex flex-col gap-4 overflow-auto">
+            <div>
+              <h2 className="font-bold">Error</h2>
+              <p>{error}</p>
+            </div>
+            
+            <div className="bg-muted p-2 rounded text-xs font-mono text-foreground">
+              <p className="font-bold mb-1">Debug Info (window.openai):</p>
+              <pre className="whitespace-pre-wrap break-all">
+                {JSON.stringify(window.openai, null, 2)}
+              </pre>
+            </div>
+
+            <button 
+              className="px-4 py-2 bg-primary text-primary-foreground rounded hover:opacity-90"
+              onClick={() => window.location.reload()}
+            >
+              Reload Widget
+            </button>
           </div>
         )}
 
