@@ -191,23 +191,16 @@ def read_note(
         "updated": note["modified"].isoformat(),
     }
 
-    return {
-        "content": [
-            {
-                "type": "text",
-                "text": f"Read note: {note['title']}"
-            }
-        ],
-        "structuredContent": {
-            "note": structured_note
-        },
-        "_meta": {
+    return ToolResult(
+        content=[TextContent(type="text", text=f"Read note: {note['title']}")],
+        structured_content={"note": structured_note},
+        meta={
             "openai/outputTemplate": "ui://widget/note.html",
+            "openai/resultCanProduceWidget": True,
             "openai/toolInvocation/invoking": f"Opening {note['title']}...",
             "openai/toolInvocation/invoked": f"Loaded {note['title']}"
-        },
-        "isError": False
-    }
+        }
+    )
 
 
 @mcp.tool(
@@ -259,23 +252,16 @@ def write_note(
         "updated": note["modified"].isoformat(),
     }
 
-    return {
-        "content": [
-            {
-                "type": "text",
-                "text": f"Successfully saved note: {path}"
-            }
-        ],
-        "structuredContent": {
-            "note": structured_note
-        },
-        "_meta": {
+    return ToolResult(
+        content=[TextContent(type="text", text=f"Successfully saved note: {path}")],
+        structured_content={"note": structured_note},
+        meta={
             "openai/outputTemplate": "ui://widget/note.html",
+            "openai/resultCanProduceWidget": True,
             "openai/toolInvocation/invoking": f"Saving {path}...",
             "openai/toolInvocation/invoked": f"Saved {path}"
-        },
-        "isError": False
-    }
+        }
+    )
 
 
 @mcp.tool(name="delete_note", description="Delete a note and remove it from the index.")
@@ -348,7 +334,13 @@ def search_notes(
 
     return ToolResult(
         content=[TextContent(type="text", text=f"Found {len(results)} notes matching '{query}'.")],
-        structured_content={"results": structured_results}
+        structured_content={"results": structured_results},
+        meta={
+            "openai/outputTemplate": "ui://widget/note.html",
+            "openai/resultCanProduceWidget": True,
+            "openai/toolInvocation/invoking": f"Searching for '{query}'...",
+            "openai/toolInvocation/invoked": f"Found {len(results)} results."
+        }
     )
 
 
