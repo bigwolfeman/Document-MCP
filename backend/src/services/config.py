@@ -30,6 +30,14 @@ class AppConfig(BaseModel):
         default="local-dev-token",
         description="Static token accepted in local mode for development",
     )
+    chatgpt_service_token: Optional[str] = Field(
+        default=None,
+        description="Static token for ChatGPT Apps SDK auth",
+    )
+    chatgpt_cors_origin: str = Field(
+        default="https://chatgpt.com",
+        description="Allowed CORS origin for ChatGPT",
+    )
     vault_base_path: Path = Field(..., description="Base directory for per-user vaults")
     hf_oauth_client_id: Optional[str] = Field(
         None, description="Hugging Face OAuth client ID (optional)"
@@ -86,11 +94,15 @@ def get_config() -> AppConfig:
         "no",
     }
     local_dev_token = _read_env("LOCAL_DEV_TOKEN", "local-dev-token")
+    chatgpt_service_token = _read_env("CHATGPT_SERVICE_TOKEN")
+    chatgpt_cors_origin = _read_env("CHATGPT_CORS_ORIGIN", "https://chatgpt.com")
 
     config = AppConfig(
         jwt_secret_key=jwt_secret,
         enable_local_mode=enable_local_mode,
         local_dev_token=local_dev_token,
+        chatgpt_service_token=chatgpt_service_token,
+        chatgpt_cors_origin=chatgpt_cors_origin,
         vault_base_path=vault_base,
         hf_oauth_client_id=hf_client_id,
         hf_oauth_client_secret=hf_client_secret,

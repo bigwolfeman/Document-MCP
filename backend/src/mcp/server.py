@@ -155,7 +155,7 @@ def write_note(
         default=None,
         description="Optional frontmatter dict (tags arrays of strings; 'version' reserved).",
     ),
-) -> Dict[str, Any]:
+) -> dict:
     start_time = time.time()
     user_id = _current_user_id()
 
@@ -168,6 +168,9 @@ def write_note(
     )
     indexer_service.index_note(user_id, note)
 
+    config = get_config()
+    widget_url = f"{config.hf_space_url}/widget.html"
+
     duration_ms = (time.time() - start_time) * 1000
     logger.info(
         "MCP tool called",
@@ -179,7 +182,35 @@ def write_note(
         },
     )
 
-    return {"status": "ok", "path": path}
+    structured_note = {
+        "title": note["title"],
+        "note_path": note["path"],
+        "body": note["body"],
+        "metadata": note["metadata"],
+        "updated": note["modified"].isoformat(),
+    }
+
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": f"Successfully saved note: {path}"
+            }
+        ],
+        "structuredContent": {
+            "note": structured_note
+        },
+        "_meta": {
+            "openai": {
+                "outputTemplate": widget_url,
+                "toolInvocation": {
+                    "invoking": f"Saving {path}...",
+                    "invoked": f"Saved {path}"
+                }
+            }
+        },
+        "isError": False
+    }
 
 
 @mcp.tool(name="delete_note", description="Delete a note and remove it from the index.")
@@ -208,40 +239,14 @@ def delete_note(
     return {"status": "ok"}
 
 
-@mcp.tool(
-    name="search_notes",
-    description="Full-text search with snippets and recency-aware scoring.",
-)
-def search_notes(
-    query: str = Field(..., description="Non-empty search query (bm25 + recency)."),
-    limit: int = Field(50, ge=1, le=100, description="Result cap between 1 and 100."),
-) -> List[Dict[str, Any]]:
-    start_time = time.time()
+@mcp.tool()
+def search_notes(query: str) -> list[str]:
+    """Search for notes in the vault."""
     user_id = _current_user_id()
+    indexer = IndexerService()
+    results = indexer.search_notes(user_id, query)
+    return [f"{r['title']} ({r['path']})" for r in results]
 
-    results = indexer_service.search_notes(user_id, query, limit=limit)
-
-    duration_ms = (time.time() - start_time) * 1000
-    logger.info(
-        "MCP tool called",
-        extra={
-            "tool_name": "search_notes",
-            "user_id": user_id,
-            "query": query,
-            "limit": limit,
-            "result_count": len(results),
-            "duration_ms": f"{duration_ms:.2f}",
-        },
-    )
-
-    return [
-        {
-            "path": row["path"],
-            "title": row["title"],
-            "snippet": row["snippet"],
-        }
-        for row in results
-    ]
 
 
 @mcp.tool(

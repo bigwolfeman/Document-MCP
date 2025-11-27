@@ -24,6 +24,7 @@ from fastapi.responses import FileResponse
 from .routes import auth, index, notes, search, graph, demo
 from ..mcp.server import mcp
 from ..services.seed import init_and_seed
+from ..services.config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+config = get_config()
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -54,6 +57,7 @@ app.add_middleware(
         "http://localhost:5173",
         "http://localhost:3000",
         "https://huggingface.co",
+        config.chatgpt_cors_origin,
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -169,6 +173,14 @@ if frontend_dist.exists():
         ):
             # Let FastAPI's 404 handler take over
             raise HTTPException(status_code=404, detail="Not found")
+
+        # Serve widget entry point
+        if full_path == "widget.html" or full_path.startswith("widget"):
+            widget_path = frontend_dist / "widget.html"
+            if widget_path.is_file():
+                # ChatGPT requires specific MIME type for widgets
+                return FileResponse(widget_path, media_type="text/html+skybridge")
+            logger.warning("widget.html requested but not found")
 
         # If the path looks like a file (has extension), try to serve it
         file_path = frontend_dist / full_path
