@@ -25,6 +25,12 @@ export class APIException extends Error {
   }
 }
 
+declare global {
+  interface Window {
+    API_BASE_URL?: string;
+  }
+}
+
 /**
  * Get the current bearer token from localStorage
  */
@@ -63,7 +69,13 @@ async function apiFetch<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(endpoint, {
+  // Handle absolute URL injection for widget
+  let url = endpoint;
+  if (endpoint.startsWith('/') && window.API_BASE_URL) {
+    url = `${window.API_BASE_URL}${endpoint}`;
+  }
+
+  const response = await fetch(url, {
     ...options,
     headers,
   });

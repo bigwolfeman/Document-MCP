@@ -72,6 +72,12 @@ def widget_resource() -> str:
         base_url = config.hf_space_url.rstrip("/")
         logger.info(f"Injecting base URL: {base_url}")
         
+        # Inject API_BASE_URL global for the widget to use
+        html_content = html_content.replace(
+            '<head>', 
+            f'<head><script>window.API_BASE_URL = "{base_url}";</script>'
+        )
+        
         # Vite builds usually output /assets/...
         html_content = html_content.replace('src="/assets/', f'src="{base_url}/assets/')
         html_content = html_content.replace('href="/assets/', f'href="{base_url}/assets/')
