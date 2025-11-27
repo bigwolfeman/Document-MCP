@@ -28,6 +28,14 @@ from ..services.config import get_config
 
 logger = logging.getLogger(__name__)
 
+# Hosted MCP HTTP endpoint (mounted Starlette app)
+session_manager = StreamableHTTPSessionManager(
+    app=mcp._mcp_server,
+    event_store=None,
+    json_response=False,
+    stateless=True,
+)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan handler to run startup tasks."""
@@ -38,7 +46,10 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.exception("Startup failed: %s", exc)
         logger.error("App starting without demo data due to initialization error")
-    yield
+    
+    # Initialize FastMCP session manager task group
+    async with session_manager.run():
+        yield
 
 
 app = FastAPI(
@@ -100,15 +111,6 @@ app.include_router(search.router, tags=["search"])
 app.include_router(index.router, tags=["index"])
 app.include_router(graph.router, tags=["graph"])
 app.include_router(demo.router, tags=["demo"])
-
-# Hosted MCP HTTP endpoint (mounted Starlette app)
-
-session_manager = StreamableHTTPSessionManager(
-    app=mcp._mcp_server,
-    event_store=None,
-    json_response=False,
-    stateless=True,
-)
 
 
 @app.api_route("/mcp", methods=["GET", "POST", "DELETE"])
