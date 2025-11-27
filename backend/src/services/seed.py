@@ -21,24 +21,114 @@ DEMO_NOTES = [
 
 Welcome to the Document Viewer! This is an AI-powered documentation system with wikilinks, full-text search, and backlinks.
 
+## 🌟 New: ChatGPT App Integration
+
+Transform ChatGPT into your personal knowledge assistant. View notes directly in the chat with our new **Interactive Widgets**.
+
+👉 **[[ChatGPT App Integration]]** - Learn how to connect and use the widget.
+
 ## Key Features
 
 - **Wikilinks**: Link between notes using `[[Note Name]]` syntax
 - **Full-Text Search**: Powered by SQLite FTS5 with BM25 ranking
-- **Backlinks**: Automatically track which notes reference each other
+- **Interactive Graph**: Visualize your vault's connections (Toggle via top-right menu)
 - **MCP Integration**: AI agents can read and write docs via [[MCP Integration]]
 - **Multi-Tenant**: Each user has an isolated vault
 
 ## Next Steps
 
-1. Browse the [[API Documentation]]
-2. Learn about [[Wikilink Examples]]
-3. Understand the [[Architecture Overview]]
-4. Check out [[Search Features]]
+1. Connect to **[[ChatGPT App Integration]]**
+2. Browse the [[API Documentation]]
+3. Learn about [[Wikilink Examples]]
+4. Understand the [[Architecture Overview]]
+5. Check out [[Self Hosting]] guide
 
 ## Demo Mode
 
 ⚠️ This is a **demo instance** - all data is temporary and resets on server restart."""
+    },
+    {
+        "path": "ChatGPT App Integration.md",
+        "title": "ChatGPT App Integration",
+        "tags": ["chatgpt", "integration", "widgets"],
+        "body": """# ChatGPT App Integration
+
+We've built a custom integration that allows ChatGPT to natively interact with this documentation vault.
+
+## Features
+
+- **Search Widget**: Ask ChatGPT "Search for API docs" and get a clean list of results.
+- **Note Viewer**: Ask "Show me the Getting Started note" and see the full markdown rendered in an interactive widget.
+- **In-Context Editing**: Ask ChatGPT to edit a note, and see the changes reflected immediately.
+
+## How to Connect
+
+1. Go to **ChatGPT** -> **Explore GPTs** -> **Create**.
+2. Click **Configure** -> **Create new action**.
+3. Select **Authentication**: `None` (for this Demo instance).
+4. Enter the **Schema**: Import from URL `https://[your-space-url].hf.space/openapi.json`.
+5. Save and test!
+
+## Using the App
+
+Try these prompts:
+
+- "What notes do I have about architecture?"
+- "Read the [[Architecture Overview]] note."
+- "Create a new note called 'Meeting Notes' with a summary of our chat."
+
+## Technical Details
+
+This integration uses the **OpenAI Apps SDK** and our **FastMCP** backend.
+The backend injects special metadata (`_meta.openai.outputTemplate`) into MCP tool responses, telling ChatGPT to render our custom **Widget** (`widget.html`) instead of plain text.
+
+See [[Architecture Overview]] for more."""
+    },
+    {
+        "path": "Self Hosting.md",
+        "title": "Self Hosting",
+        "tags": ["guide", "hosting", "deployment"],
+        "body": """# Self Hosting
+
+While this demo runs on Hugging Face Spaces, the Document Viewer is designed to be self-hosted for privacy and persistence.
+
+## Requirements
+
+- **Docker** or **Python 3.11+** & **Node.js 20+**
+
+## Docker Deployment (Recommended)
+
+1. Clone the repository.
+2. Run:
+   ```bash
+   docker compose up --build
+   ```
+3. Access at `http://localhost:5173`.
+
+## Manual Deployment
+
+1. **Backend**:
+   ```bash
+   cd backend
+   uv sync
+   ./start.sh
+   ```
+2. **Frontend**:
+   ```bash
+   cd frontend
+   npm install
+   npm run build
+   ```
+
+## Configuration
+
+Configure the app via environment variables or `.env` file:
+
+- `JWT_SECRET_KEY`: Set a strong secret for authentication.
+- `VAULT_BASE_PATH`: Directory where notes are stored (mount a persistent volume here).
+- `ENABLE_NOAUTH_MCP`: Set to `false` for production to require tokens.
+
+See [[API Documentation]] for more config details."""
     },
     {
         "path": "API Documentation.md",
@@ -80,7 +170,8 @@ Get your token from [[Settings]] after signing in with Hugging Face OAuth.
 
 ## Related
 
-- [[MCP Integration]] - AI agent access via MCP
+- [[ChatGPT App Integration]] - Use the API via ChatGPT
+- [[MCP Integration]] - Standard MCP tool reference
 - [[Wikilink Examples]] - How to use wikilinks"""
     },
     {
@@ -96,10 +187,10 @@ The Model Context Protocol (MCP) allows AI agents like Claude to interact with y
 The MCP server exposes these tools:
 
 - `list_notes` - List all notes in the vault
-- `read_note` - Read a specific note with metadata
+- `read_note` - Read a specific note with metadata (Returns widget metadata for ChatGPT)
 - `write_note` - Create or update a note
 - `delete_note` - Remove a note
-- `search_notes` - Full-text search with ranking
+- `search_notes` - Full-text search with ranking (Returns widget metadata for ChatGPT)
 - `get_backlinks` - Find notes linking to a target
 - `get_tags` - List all tags
 
@@ -124,6 +215,7 @@ For **HTTP mode** (HF Space), use:
 
 ## Related
 
+- [[ChatGPT App Integration]] - The advanced widget experience
 - [[API Documentation]] - REST API reference
 - [[Architecture Overview]] - System design"""
     },
@@ -179,7 +271,7 @@ The Document Viewer is built with a modern tech stack optimized for AI-human col
 ### Backend
 
 - **FastAPI** - HTTP API server
-- **FastMCP** - MCP server for AI agents
+- **FastMCP** - MCP server for AI agents (supports StdIO and SSE/HTTP)
 - **SQLite FTS5** - Full-text search engine
 - **python-frontmatter** - YAML metadata parsing
 
@@ -188,35 +280,16 @@ The Document Viewer is built with a modern tech stack optimized for AI-human col
 - **React + Vite** - Modern web framework
 - **shadcn/ui** - Beautiful UI components
 - **Tailwind CSS** - Utility-first styling
-- **react-markdown** - Markdown rendering
+- **react-force-graph** - Interactive graph visualization
 
-## Data Model
+## ChatGPT Integration
 
-### Notes
+We use a hybrid approach for the [[ChatGPT App Integration]]:
 
-Each note is a Markdown file with optional YAML frontmatter:
-
-```yaml
----
-title: My Note
-tags: [guide, tutorial]
-created: 2025-01-15T10:00:00Z
-updated: 2025-01-15T14:30:00Z
----
-
-# Note content here
-```
-
-### Indexing
-
-The system maintains several indexes:
-
-- **note_metadata** - Versions, titles, timestamps
-- **note_fts** - Full-text search (SQLite FTS5)
-- **note_tags** - Tag associations
-- **note_links** - Wikilink graph
-
-See [[Search Features]] for ranking details.
+1. **FastMCP** exposes tools (`read_note`) via HTTP.
+2. Tools return `CallToolResult` with `_meta.openai.outputTemplate`.
+3. ChatGPT renders our **Widget** (`widget.html`) in an iframe.
+4. The Widget reuses React components from the main app (`NoteViewer`) for a consistent look.
 
 ## Multi-Tenancy
 
@@ -363,6 +436,15 @@ Common issues and solutions.
 - Wikilinks match on normalized slugs (case-insensitive, spaces→dashes)
 - See [[Wikilink Examples]] for how resolution works
 
+## ChatGPT Widget Empty
+
+**Problem**: The ChatGPT widget loads but shows a blank screen or error.
+
+**Solution**:
+- Check that `ENABLE_NOAUTH_MCP` is set to `true` (if using the demo instance).
+- Ensure the backend URL is reachable from ChatGPT.
+- Check if the note actually exists in the `demo-user` vault.
+
 ## Version Conflict on Save
 
 **Problem**: "This note changed since you opened it" error when saving.
@@ -373,15 +455,6 @@ Common issues and solutions.
 - Copy your changes and re-apply them
 - This prevents data loss from concurrent edits
 
-## Authentication Issues
-
-**Problem**: Keep getting logged out or "401 Unauthorized" errors.
-
-**Solution**:
-- JWT tokens expire after 7 days
-- Sign in again to get a new token
-- Check that your [[MCP Integration]] config uses a valid token
-
 ## Data Disappeared
 
 **Problem**: Notes or changes are missing after page reload.
@@ -389,8 +462,7 @@ Common issues and solutions.
 **Solution**:
 - This is a **DEMO instance** with ephemeral storage
 - Data resets when the server restarts
-- For permanent storage, deploy your own instance
-- See [[Getting Started]] for demo disclaimer"""
+- For permanent storage, deploy your own instance (See [[Self Hosting]])"""
     },
     {
         "path": "FAQ.md",
@@ -408,25 +480,21 @@ A: An AI-powered documentation system where AI agents (via [[MCP Integration]]) 
 
 **Q: Is my data persistent?**
 
-A: **No, this is a demo instance.** All data is ephemeral and resets on server restart. For permanent storage, deploy your own instance.
+A: **No, this is a demo instance.** All data is ephemeral and resets on server restart. For permanent storage, deploy your own instance (see [[Self Hosting]]).
 
 **Q: How do I sign in?**
 
 A: Click "Sign in with Hugging Face" on the login page. You'll authenticate via HF OAuth and get isolated vault access.
 
-## Features
+## ChatGPT Integration
 
-**Q: What are wikilinks?**
+**Q: How does the ChatGPT widget work?**
 
-A: Wikilinks let you link between notes using `[[Note Name]]` syntax. See [[Wikilink Examples]].
+A: Our MCP server returns special metadata that tells ChatGPT to load an iframe with our custom `widget.html`. This reuses our React frontend code to render notes beautifully inside the chat. See [[ChatGPT App Integration]].
 
-**Q: How does search work?**
+**Q: Can ChatGPT create notes?**
 
-A: Full-text search with BM25 ranking, weighted by title matches and recency. See [[Search Features]].
-
-**Q: Can AI agents edit my docs?**
-
-A: Yes! Configure [[MCP Integration]] to let AI agents read and write notes via MCP tools.
+A: Yes! Ask it to "Create a note about X" and it will use the `write_note` tool.
 
 ## Technical
 
