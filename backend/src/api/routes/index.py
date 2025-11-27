@@ -3,14 +3,29 @@
 from __future__ import annotations
 
 from datetime import datetime
+import time
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ...models.index import IndexHealth
 from ...services.database import DatabaseService
 from ...services.indexer import IndexerService
 from ...services.vault import VaultService
+from ..middleware import AuthContext, get_auth_context
+
+DEMO_USER_ID = "demo-user"
+
+
+def _ensure_index_mutation_allowed(user_id: str) -> None:
+    if user_id == DEMO_USER_ID:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "demo_read_only",
+                "message": "Demo mode does not allow index rebuilds. Sign in to manage the index.",
+            },
+        )
 
 router = APIRouter()
 
@@ -20,17 +35,13 @@ class RebuildResponse(BaseModel):
 
     status: str
     notes_indexed: int
-
-
-def get_user_id() -> str:
-    """Return the current user ID. For now, hardcoded to 'local-dev'."""
-    return "local-dev"
+    duration_ms: int
 
 
 @router.get("/api/index/health", response_model=IndexHealth)
-async def get_index_health():
+async def get_index_health(auth: AuthContext = Depends(get_auth_context)):
     """Get index health statistics."""
-    user_id = get_user_id()
+    user_id = auth.user_id
     db_service = DatabaseService()
     
     try:
@@ -77,9 +88,11 @@ async def get_index_health():
 
 
 @router.post("/api/index/rebuild", response_model=RebuildResponse)
-async def rebuild_index():
+async def rebuild_index(auth: AuthContext = Depends(get_auth_context)):
     """Rebuild the entire index from scratch."""
-    user_id = get_user_id()
+    start_time = time.time()
+    user_id = auth.user_id
+    _ensure_index_mutation_allowed(user_id)
     vault_service = VaultService()
     indexer_service = IndexerService()
     
@@ -130,6 +143,7 @@ async def rebuild_index():
         return RebuildResponse(
             status="completed",
             notes_indexed=indexed_count,
+            duration_ms=int((time.time() - start_time) * 1000),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to rebuild index: {str(e)}")

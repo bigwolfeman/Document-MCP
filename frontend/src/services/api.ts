@@ -1,4 +1,4 @@
-import type { Note, NoteSummary, NoteUpdateRequest } from '@/types/note';
+import type { Note, NoteSummary, NoteUpdateRequest, NoteCreateRequest } from '@/types/note';
 import type { SearchResult, Tag, IndexHealth } from '@/types/search';
 import type { User } from '@/types/user';
 import type { APIError } from '@/types/auth';
@@ -7,13 +7,21 @@ import type { APIError } from '@/types/auth';
  * Custom error class for API errors
  */
 export class APIException extends Error {
+  status: number;
+  error: string;
+  detail?: Record<string, unknown>;
+
   constructor(
-    public status: number,
-    public error: string,
-    public detail?: Record<string, unknown>
+    status: number,
+    message: string,
+    errorCode?: string,
+    detail?: Record<string, unknown>
   ) {
-    super(error);
+    super(message);
     this.name = 'APIException';
+    this.status = status;
+    this.error = errorCode || message;
+    this.detail = detail;
   }
 }
 
@@ -46,9 +54,9 @@ async function apiFetch<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const token = getAuthToken();
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(options.headers || {}),
+    ...(options.headers as Record<string, string> || {}),
   };
 
   if (token) {
@@ -82,11 +90,9 @@ async function apiFetch<T>(
         message: `HTTP ${response.status}: ${response.statusText}`,
       };
     }
-    throw new APIException(
-      response.status,
-      errorData.message || errorData.error,
-      errorData.detail
-    );
+    const message = errorData.message || `HTTP ${response.status}`;
+    const code = errorData.error || message;
+    throw new APIException(response.status, message, code, errorData.detail);
   }
 
   // Handle 204 No Content
@@ -100,6 +106,12 @@ async function apiFetch<T>(
 /**
  * T066: List all notes with optional folder filtering
  */
+import type { GraphData } from '@/types/graph';
+
+export async function getGraphData(): Promise<GraphData> {
+  return apiFetch<GraphData>('/api/graph');
+}
+
 export async function listNotes(folder?: string): Promise<NoteSummary[]> {
   const params = new URLSearchParams();
   if (folder) {
@@ -139,6 +151,17 @@ export async function getBacklinks(path: string): Promise<BacklinkResult[]> {
   return apiFetch<BacklinkResult[]>(`/api/backlinks/${encodedPath}`);
 }
 
+export interface DemoTokenResponse {
+  token: string;
+  token_type: string;
+  expires_at: string;
+  user_id: string;
+}
+
+export async function getDemoToken(): Promise<DemoTokenResponse> {
+  return apiFetch<DemoTokenResponse>('/api/demo/token');
+}
+
 /**
  * T070: Get all tags with counts
  */
@@ -147,7 +170,7 @@ export async function getTags(): Promise<Tag[]> {
 }
 
 /**
- * T071: Update a note
+ * T071: Create a note
  */
 export async function createNote(data: NoteCreateRequest): Promise<Note> {
   return apiFetch<Note>('/api/notes', {

@@ -6,7 +6,6 @@ import { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Edit, Trash2, Calendar, Tag as TagIcon, ArrowLeft } from 'lucide-react';
-import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -14,7 +13,6 @@ import { Separator } from '@/components/ui/separator';
 import type { Note } from '@/types/note';
 import type { BacklinkResult } from '@/services/api';
 import { createWikilinkComponent } from '@/lib/markdown.tsx';
-import { normalizeSlug } from '@/lib/wikilink';
 
 interface NoteViewerProps {
   note: Note;
@@ -36,6 +34,21 @@ export function NoteViewer({
     () => createWikilinkComponent(onWikilinkClick),
     [onWikilinkClick]
   );
+
+  // Pre-process markdown to convert wikilinks to standard links
+  // [[Link]] -> [Link](wikilink:Link)
+  // [[Link|Alias]] -> [Alias](wikilink:Link)
+  const processedBody = useMemo(() => {
+    if (!note.body) return '';
+    const processed = note.body.replace(/\[\[([^\]]+)\]\]/g, (_match, content) => {
+      const [link, alias] = content.split('|');
+      const displayText = alias || link;
+      const href = `wikilink:${encodeURIComponent(link)}`;
+      return `[${displayText}](${href})`;
+    });
+    // console.log('Processed Body:', processed);
+    return processed;
+  }, [note.body]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -78,8 +91,9 @@ export function NoteViewer({
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={markdownComponents}
+            urlTransform={(url) => url} // Allow all protocols including wikilink:
           >
-            {note.body}
+            {processedBody}
           </ReactMarkdown>
         </div>
 
@@ -131,7 +145,8 @@ export function NoteViewer({
                       className="block text-left text-primary hover:underline"
                       onClick={() => onWikilinkClick(backlink.title)}
                     >
-                      • {backlink.title}
+                      {'-> '}
+                      {backlink.title}
                     </button>
                   ))}
                 </div>
@@ -147,7 +162,7 @@ export function NoteViewer({
           )}
 
           <div className="text-xs text-muted-foreground">
-            Version: {note.version} • Size: {(note.size_bytes / 1024).toFixed(1)} KB
+            Version: {note.version} | Size: {(note.size_bytes / 1024).toFixed(1)} KB
           </div>
         </div>
       </ScrollArea>

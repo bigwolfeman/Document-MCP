@@ -6,14 +6,28 @@ from datetime import datetime
 from typing import Optional
 from urllib.parse import unquote
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ...models.note import Note, NoteSummary, NoteUpdate, NoteCreate
 from ...services.database import DatabaseService
 from ...services.indexer import IndexerService
 from ...services.vault import VaultService
+from ..middleware import AuthContext, get_auth_context
 
 router = APIRouter()
+
+DEMO_USER_ID = "demo-user"
+
+
+def _ensure_write_allowed(user_id: str) -> None:
+    if user_id == DEMO_USER_ID:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "demo_read_only",
+                "message": "Demo mode is read-only. Sign in with Hugging Face to make changes.",
+            },
+        )
 
 
 class ConflictError(Exception):
@@ -24,15 +38,13 @@ class ConflictError(Exception):
         super().__init__(self.message)
 
 
-def get_user_id() -> str:
-    """Return the current user ID. For now, hardcoded to 'local-dev'."""
-    return "local-dev"
-
-
 @router.get("/api/notes", response_model=list[NoteSummary])
-async def list_notes(folder: Optional[str] = Query(None, description="Optional folder filter")):
+async def list_notes(
+    folder: Optional[str] = Query(None, description="Optional folder filter"),
+    auth: AuthContext = Depends(get_auth_context),
+):
     """List all notes in the vault."""
-    user_id = get_user_id()
+    user_id = auth.user_id
     vault_service = VaultService()
     
     try:
@@ -58,9 +70,10 @@ async def list_notes(folder: Optional[str] = Query(None, description="Optional f
 
 
 @router.post("/api/notes", response_model=Note, status_code=201)
-async def create_note(create: NoteCreate):
+async def create_note(create: NoteCreate, auth: AuthContext = Depends(get_auth_context)):
     """Create a new note."""
-    user_id = get_user_id()
+    user_id = auth.user_id
+    _ensure_write_allowed(user_id)
     vault_service = VaultService()
     indexer_service = IndexerService()
     db_service = DatabaseService()
@@ -154,9 +167,9 @@ async def create_note(create: NoteCreate):
 
 
 @router.get("/api/notes/{path:path}", response_model=Note)
-async def get_note(path: str):
+async def get_note(path: str, auth: AuthContext = Depends(get_auth_context)):
     """Get a specific note by path."""
-    user_id = get_user_id()
+    user_id = auth.user_id
     vault_service = VaultService()
     db_service = DatabaseService()
     
@@ -224,9 +237,14 @@ async def get_note(path: str):
 
 
 @router.put("/api/notes/{path:path}", response_model=Note)
-async def update_note(path: str, update: NoteUpdate):
+async def update_note(
+    path: str,
+    update: NoteUpdate,
+    auth: AuthContext = Depends(get_auth_context),
+):
     """Update a note with optimistic concurrency control."""
-    user_id = get_user_id()
+    user_id = auth.user_id
+    _ensure_write_allowed(user_id)
     vault_service = VaultService()
     indexer_service = IndexerService()
     db_service = DatabaseService()
@@ -334,9 +352,14 @@ class NoteMoveRequest(BaseModel):
 
 
 @router.patch("/api/notes/{path:path}", response_model=Note)
-async def move_note(path: str, move_request: NoteMoveRequest):
+async def move_note(
+    path: str,
+    move_request: NoteMoveRequest,
+    auth: AuthContext = Depends(get_auth_context),
+):
     """Move or rename a note to a new path."""
-    user_id = get_user_id()
+    user_id = auth.user_id
+    _ensure_write_allowed(user_id)
     vault_service = VaultService()
     indexer_service = IndexerService()
     db_service = DatabaseService()

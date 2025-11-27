@@ -11,7 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { SettingsSectionSkeleton } from '@/components/SettingsSectionSkeleton';
-import { getCurrentUser, getToken, logout, getStoredToken } from '@/services/auth';
+import { getCurrentUser, getToken, logout, getStoredToken, isDemoSession, AUTH_TOKEN_CHANGED_EVENT } from '@/services/auth';
 import { getIndexHealth, rebuildIndex, type RebuildResponse } from '@/services/api';
 import type { User } from '@/types/user';
 import type { IndexHealth } from '@/types/search';
@@ -25,32 +25,52 @@ export function Settings() {
   const [isRebuilding, setIsRebuilding] = useState(false);
   const [rebuildResult, setRebuildResult] = useState<RebuildResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isDemoMode, setIsDemoMode] = useState<boolean>(isDemoSession());
 
   useEffect(() => {
     loadData();
   }, []);
 
+  useEffect(() => {
+    const handler = () => setIsDemoMode(isDemoSession());
+    window.addEventListener(AUTH_TOKEN_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(AUTH_TOKEN_CHANGED_EVENT, handler);
+  }, []);
+
   const loadData = async () => {
     try {
-      const [userData, health] = await Promise.all([
-        getCurrentUser().catch(() => null),
-        getIndexHealth().catch(() => null),
-      ]);
-      
-      setUser(userData);
-      setIndexHealth(health);
-      
-      // Get current token
       const token = getStoredToken();
-      if (token) {
+      
+      // Handle local-dev-token as a special case
+      if (token === 'local-dev-token') {
+        setUser({
+          user_id: 'demo-user',
+          vault_path: '/data/vaults/demo-user',
+          created: new Date().toISOString(),
+        });
         setApiToken(token);
+      } else {
+        // Real OAuth user
+        const userData = await getCurrentUser().catch(() => null);
+        setUser(userData);
+        if (token) {
+          setApiToken(token);
+        }
       }
+      
+      // Always try to load index health
+      const health = await getIndexHealth().catch(() => null);
+      setIndexHealth(health);
     } catch (err) {
       console.error('Error loading settings:', err);
     }
   };
 
   const handleGenerateToken = async () => {
+    if (isDemoMode) {
+      setError('Demo mode is read-only. Sign in to generate new tokens.');
+      return;
+    }
     try {
       setError(null);
       const tokenResponse = await getToken();
@@ -72,6 +92,10 @@ export function Settings() {
   };
 
   const handleRebuildIndex = async () => {
+    if (isDemoMode) {
+      setError('Demo mode is read-only. Sign in to rebuild the index.');
+      return;
+    }
     setIsRebuilding(true);
     setError(null);
     setRebuildResult(null);
@@ -116,6 +140,13 @@ export function Settings() {
 
       {/* Content */}
       <div className="max-w-4xl mx-auto p-6 space-y-6">
+        {isDemoMode && (
+          <Alert variant="destructive">
+            <AlertDescription>
+              You are viewing the shared demo vault. Sign in with Hugging Face from the main app to enable token generation and index management.
+            </AlertDescription>
+          </Alert>
+        )}
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
@@ -194,31 +225,45 @@ export function Settings() {
               </div>
             </div>
 
-            <Button onClick={handleGenerateToken}>
+            <Button onClick={handleGenerateToken} disabled={isDemoMode}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Generate New Token
             </Button>
 
             <div className="text-xs text-muted-foreground mt-4">
-              <p className="font-semibold mb-2">MCP Configuration Example:</p>
+              <p className="font-semibold mb-2">MCP Configuration (Hosted HTTP):</p>
+              <pre className="bg-muted p-3 rounded overflow-x-auto">
+{`{
+  "mcpServers": {
+    "obsidian-docs": {
+      "transport": "http",
+      "url": "${window.location.origin}/mcp",
+      "headers": {
+        "Authorization": "Bearer ${apiToken || 'YOUR_TOKEN_HERE'}"
+      }
+    }
+  }
+}`}
+              </pre>
+              <p className="font-semibold mb-2 mt-4">Local Development (STDIO):</p>
               <pre className="bg-muted p-3 rounded overflow-x-auto">
 {`{
   "mcpServers": {
     "obsidian-docs": {
       "command": "python",
       "args": ["-m", "backend.src.mcp.server"],
-      "cwd": "/path/to/Document-MCP",
+      "cwd": "/absolute/path/to/Document-MCP",
       "env": {
-        "BEARER_TOKEN": "${apiToken || 'YOUR_TOKEN_HERE'}",
-        "FASTMCP_SHOW_CLI_BANNER": "false",
-        "PYTHONPATH": "/path/to/Document-MCP"
+        "LOCAL_USER_ID": "local-dev",
+        "PYTHONPATH": "/absolute/path/to/Document-MCP",
+        "FASTMCP_SHOW_CLI_BANNER": "false"
       }
     }
   }
 }`}
               </pre>
               <p className="text-xs text-muted-foreground mt-2">
-                💡 Replace <code className="bg-muted px-1 rounded">/path/to/Document-MCP</code> with your actual project path
+                Replace <code className="bg-muted px-1 rounded">/absolute/path/to/Document-MCP</code> with your local checkout path
               </p>
             </div>
           </CardContent>
@@ -255,14 +300,14 @@ export function Settings() {
               {rebuildResult && (
                 <Alert>
                   <AlertDescription>
-                    ✅ Index rebuilt successfully! Indexed {rebuildResult.notes_indexed} notes in {rebuildResult.duration_ms}ms
+                    Index rebuilt successfully! Indexed {rebuildResult.notes_indexed} notes in {rebuildResult.duration_ms}ms
                   </AlertDescription>
                 </Alert>
               )}
 
               <Button
                 onClick={handleRebuildIndex}
-                disabled={isRebuilding}
+                disabled={isDemoMode || isRebuilding}
                 variant="outline"
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${isRebuilding ? 'animate-spin' : ''}`} />

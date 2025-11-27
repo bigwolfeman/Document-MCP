@@ -16,6 +16,7 @@ import { NoteViewer } from '@/components/NoteViewer';
 import { NoteViewerSkeleton } from '@/components/NoteViewerSkeleton';
 import { NoteEditor } from '@/components/NoteEditor';
 import { useToast } from '@/hooks/useToast';
+import { GraphView } from '@/components/GraphView';
 import {
   listNotes,
   getNote,
@@ -29,7 +30,6 @@ import {
 } from '@/services/api';
 import {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -42,6 +42,8 @@ import { DeleteConfirmationDialog } from '@/components/DeleteConfirmationDialog'
 import type { IndexHealth } from '@/types/search';
 import type { Note, NoteSummary } from '@/types/note';
 import { normalizeSlug } from '@/lib/wikilink';
+import { Network } from 'lucide-react';
+import { AUTH_TOKEN_CHANGED_EVENT, isDemoSession, login } from '@/services/auth';
 
 export function MainApp() {
   const navigate = useNavigate();
@@ -54,6 +56,7 @@ export function MainApp() {
   const [isLoadingNote, setIsLoadingNote] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [isGraphView, setIsGraphView] = useState(false);
   const [indexHealth, setIndexHealth] = useState<IndexHealth | null>(null);
   const [isNewNoteDialogOpen, setIsNewNoteDialogOpen] = useState(false);
   const [newNoteName, setNewNoteName] = useState('');
@@ -63,6 +66,21 @@ export function MainApp() {
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState<boolean>(isDemoSession());
+
+  useEffect(() => {
+    const handleAuthChange = () => {
+      const demo = isDemoSession();
+      setIsDemoMode(demo);
+      if (demo) {
+        setIsEditMode(false);
+      }
+    };
+    window.addEventListener(AUTH_TOKEN_CHANGED_EVENT, handleAuthChange);
+    return () => {
+      window.removeEventListener(AUTH_TOKEN_CHANGED_EVENT, handleAuthChange);
+    };
+  }, []);
 
   // T083: Load directory tree on mount
   // T119: Load index health
@@ -137,6 +155,7 @@ export function MainApp() {
   // Handle wikilink clicks
   const handleWikilinkClick = async (linkText: string) => {
     const slug = normalizeSlug(linkText);
+    console.log(`[Wikilink] Clicked: "${linkText}", Slug: "${slug}"`);
     
     // Try to find exact match first
     let targetNote = notes.find(
@@ -147,11 +166,13 @@ export function MainApp() {
     if (!targetNote) {
       targetNote = notes.find((note) => {
         const pathSlug = normalizeSlug(note.note_path.replace(/\.md$/, ''));
+        // console.log(`Checking path: ${note.note_path}, Slug: ${pathSlug}`);
         return pathSlug.endsWith(slug);
       });
     }
 
     if (targetNote) {
+      console.log(`[Wikilink] Found target: ${targetNote.note_path}`);
       setSelectedPath(targetNote.note_path);
     } else {
       // TODO: Show "Create note" dialog
@@ -168,6 +189,10 @@ export function MainApp() {
 
   // T093: Handle edit button click
   const handleEdit = () => {
+    if (isDemoMode) {
+      toast.error('Demo mode is read-only. Sign in with Hugging Face to edit notes.');
+      return;
+    }
     setIsEditMode(true);
   };
 
@@ -187,6 +212,10 @@ export function MainApp() {
 
   // Handle note dialog open change
   const handleDialogOpenChange = (open: boolean) => {
+    if (open && isDemoMode) {
+      toast.error('Demo mode is read-only. Sign in with Hugging Face to create notes.');
+      return;
+    }
     setIsNewNoteDialogOpen(open);
     if (!open) {
       // Clear input when dialog closes
@@ -196,6 +225,10 @@ export function MainApp() {
 
   // Handle folder dialog open change
   const handleFolderDialogOpenChange = (open: boolean) => {
+    if (open && isDemoMode) {
+      toast.error('Demo mode is read-only. Sign in with Hugging Face to create folders.');
+      return;
+    }
     setIsNewFolderDialogOpen(open);
     if (!open) {
       // Clear input when dialog closes
@@ -205,6 +238,10 @@ export function MainApp() {
 
   // Handle create new note
   const handleCreateNote = async () => {
+    if (isDemoMode) {
+      toast.error('Demo mode is read-only. Sign in to create notes.');
+      return;
+    }
     if (!newNoteName.trim() || isCreatingNote) return;
 
     setIsCreatingNote(true);
@@ -269,6 +306,10 @@ export function MainApp() {
 
   // Handle create new folder
   const handleCreateFolder = async () => {
+    if (isDemoMode) {
+      toast.error('Demo mode is read-only. Sign in to create folders.');
+      return;
+    }
     if (!newFolderName.trim() || isCreatingFolder) return;
 
     setIsCreatingFolder(true);
@@ -279,7 +320,7 @@ export function MainApp() {
       const folderPath = newFolderName.replace(/\/$/, ''); // Remove trailing slash if present
       const placeholderPath = `${folderPath}/.placeholder.md`;
 
-      const note = await createNote({
+      await createNote({
         note_path: placeholderPath,
         title: 'Folder',
         body: `# ${folderPath}\n\nThis folder was created.`,
@@ -306,43 +347,12 @@ export function MainApp() {
     }
   };
 
-  // Handle rename note
-  const handleRenameNote = async (oldPath: string, newPath: string) => {
-    if (!newPath.trim()) {
-      toast.error('New path cannot be empty');
-      return;
-    }
-
-    try {
-      // Ensure new path has .md extension
-      const finalNewPath = newPath.endsWith('.md') ? newPath : `${newPath}.md`;
-
-      await moveNote(oldPath, finalNewPath);
-
-      // Refresh notes list
-      const notesList = await listNotes();
-      setNotes(notesList);
-
-      // If renaming currently selected note, update selection
-      if (selectedPath === oldPath) {
-        setSelectedPath(finalNewPath);
-      }
-
-      toast.success(`Note renamed successfully`);
-    } catch (err) {
-      let errorMessage = 'Failed to rename note';
-      if (err instanceof APIException) {
-        errorMessage = err.message || err.error;
-      } else if (err instanceof Error) {
-        errorMessage = err.message;
-      }
-      toast.error(errorMessage);
-      console.error('Error renaming note:', err);
-    }
-  };
-
   // Handle dragging file to folder
   const handleMoveNoteToFolder = async (oldPath: string, targetFolderPath: string) => {
+    if (isDemoMode) {
+      toast.error('Demo mode is read-only. Sign in to move notes.');
+      return;
+    }
     try {
       // Get the filename from the old path
       const fileName = oldPath.split('/').pop();
@@ -428,18 +438,55 @@ export function MainApp() {
 
   return (
     <div className="h-screen flex flex-col">
+      {/* Demo warning banner */}
+      <Alert variant="destructive" className="rounded-none border-x-0 border-t-0">
+        <AlertDescription className="text-center">
+          DEMO ONLY - ALL DATA IS TEMPORARY AND MAY BE DELETED AT ANY TIME
+        </AlertDescription>
+      </Alert>
+      
       {/* Top bar */}
       <div className="border-b border-border p-4 animate-fade-in">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <h1 className="text-xl font-semibold">📚 Document Viewer</h1>
-          <Button variant="ghost" size="sm" onClick={() => navigate('/settings')}>
-            <SettingsIcon className="h-4 w-4" />
-          </Button>
+          <div className="flex gap-2">
+            {isDemoMode && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => login()}
+                title="Sign in with Hugging Face"
+              >
+                Sign in
+              </Button>
+            )}
+            <Button
+              variant={isGraphView ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setIsGraphView(!isGraphView)}
+              title={isGraphView ? "Switch to Note View" : "Switch to Graph View"}
+            >
+              <Network className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/settings')}>
+              <SettingsIcon className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Main content */}
       <div className="flex-1 overflow-hidden animate-fade-in" style={{ animationDelay: '0.1s' }}>
+        {isDemoMode && (
+          <div className="border-b border-border bg-muted/40 px-4 py-2 text-sm text-muted-foreground flex flex-wrap items-center justify-between gap-2">
+            <span>
+              You are browsing the shared demo vault in read-only mode. Sign in with your Hugging Face account to create and edit notes.
+            </span>
+            <Button variant="outline" size="sm" onClick={() => login()}>
+              Sign in
+            </Button>
+          </div>
+        )}
         <ResizablePanelGroup direction="horizontal">
           {/* Left sidebar */}
           <ResizablePanel defaultSize={25} minSize={15} maxSize={40}>
@@ -450,7 +497,7 @@ export function MainApp() {
                   onOpenChange={handleDialogOpenChange}
                 >
                   <DialogTrigger asChild>
-                    <Button variant="outline" size="sm" className="w-full">
+                    <Button variant="outline" size="sm" className="w-full" disabled={isDemoMode}>
                       <Plus className="h-4 w-4 mr-1" />
                       New Note
                     </Button>
@@ -500,7 +547,7 @@ export function MainApp() {
                   onOpenChange={handleFolderDialogOpenChange}
                 >
                   <DialogTrigger asChild>
-                    <Button variant="outline" size="sm" className="w-full">
+                    <Button variant="outline" size="sm" className="w-full" disabled={isDemoMode}>
                       <FolderPlus className="h-4 w-4 mr-1" />
                       New Folder
                     </Button>
@@ -576,36 +623,43 @@ export function MainApp() {
                 </div>
               )}
 
-              {isLoadingNote ? (
-                <NoteViewerSkeleton />
-              ) : currentNote ? (
-                isEditMode ? (
-                  <NoteEditor
-                    note={currentNote}
-                    onSave={handleNoteSave}
-                    onCancel={handleEditCancel}
-                    onWikilinkClick={handleWikilinkClick}
-                  />
-                ) : (
-                  <NoteViewer
-                    note={currentNote}
-                    backlinks={backlinks}
-                    onEdit={handleEdit}
-                    onDelete={() => setIsDeleteDialogOpen(true)}
-                    onWikilinkClick={handleWikilinkClick}
-                  />
-                )
+              {isGraphView ? (
+                <GraphView onSelectNote={(path) => {
+                  handleSelectNote(path);
+                  setIsGraphView(false);
+                }} />
               ) : (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center text-muted-foreground">
-                    <p className="text-lg mb-2">Select a note to view</p>
-                    <p className="text-sm">
-                      {notes.length === 0
-                        ? 'No notes available. Create your first note to get started.'
-                        : 'Choose a note from the sidebar'}
-                    </p>
+                isLoadingNote ? (
+                  <NoteViewerSkeleton />
+                ) : currentNote ? (
+                  isEditMode ? (
+                    <NoteEditor
+                      note={currentNote}
+                      onSave={handleNoteSave}
+                      onCancel={handleEditCancel}
+                      onWikilinkClick={handleWikilinkClick}
+                    />
+                  ) : (
+                    <NoteViewer
+                      note={currentNote}
+                      backlinks={backlinks}
+                      onEdit={isDemoMode ? undefined : handleEdit}
+                      onDelete={isDemoMode ? undefined : () => setIsDeleteDialogOpen(true)}
+                      onWikilinkClick={handleWikilinkClick}
+                    />
+                  )
+                ) : (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center text-muted-foreground">
+                      <p className="text-lg mb-2">Select a note to view</p>
+                      <p className="text-sm">
+                        {notes.length === 0
+                          ? 'No notes available. Create your first note to get started.'
+                          : 'Choose a note from the sidebar'}
+                      </p>
+                    </div>
                   </div>
-                </div>
+                )
               )}
             </div>
           </ResizablePanel>
