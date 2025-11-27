@@ -120,7 +120,12 @@ async def mcp_http_bridge(request: Request) -> Response:
     async def send(message):
         await send_queue.put(message)
 
-    await session_manager.handle_request(request.scope, request.receive, send)
+    try:
+        await session_manager.handle_request(request.scope, request.receive, send)
+    except Exception as exc:
+        logger.exception("FastMCP session manager crashed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"MCP Bridge Error: {exc}")
+
     await send_queue.put(None)
 
     result_body = b""
