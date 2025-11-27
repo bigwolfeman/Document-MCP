@@ -23,6 +23,7 @@ import {
   getIndexHealth,
   createNote,
   moveNote,
+  deleteNote,
   type BacklinkResult,
   APIException,
 } from '@/services/api';
@@ -37,6 +38,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { DeleteConfirmationDialog } from '@/components/DeleteConfirmationDialog';
 import type { IndexHealth } from '@/types/search';
 import type { Note, NoteSummary } from '@/types/note';
 import { normalizeSlug } from '@/lib/wikilink';
@@ -59,6 +61,8 @@ export function MainApp() {
   const [isNewFolderDialogOpen, setIsNewFolderDialogOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // T083: Load directory tree on mount
   // T119: Load index health
@@ -379,6 +383,49 @@ export function MainApp() {
     }
   };
 
+  // Handle delete note
+  const handleDeleteNote = async () => {
+    if (!currentNote) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteNote(currentNote.note_path);
+
+      // Refresh notes list
+      const notesList = await listNotes();
+      setNotes(notesList);
+
+      // Clear current note selection
+      setSelectedPath(null);
+      setCurrentNote(null);
+      setIsDeleteDialogOpen(false);
+
+      // Select first note if available
+      if (notesList.length > 0) {
+        setSelectedPath(notesList[0].note_path);
+      }
+
+      const displayName = currentNote.note_path.replace(/\.md$/, '').split('/').pop() || currentNote.note_path;
+      toast.success(`Note "${displayName}" deleted successfully`);
+    } catch (err) {
+      let errorMessage = 'Failed to delete note';
+      if (err instanceof APIException) {
+        // Use message first, then error, then fallback
+        errorMessage = err.message || err.error || `Error ${err.status}`;
+        // Handle case where message might be undefined
+        if (!errorMessage || errorMessage === 'undefined') {
+          errorMessage = `Failed to delete note (HTTP ${err.status})`;
+        }
+      } else if (err instanceof Error) {
+        errorMessage = err.message || 'Unknown error occurred';
+      }
+      toast.error(errorMessage);
+      console.error('Error deleting note:', err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="h-screen flex flex-col">
       {/* Top bar */}
@@ -544,6 +591,7 @@ export function MainApp() {
                     note={currentNote}
                     backlinks={backlinks}
                     onEdit={handleEdit}
+                    onDelete={() => setIsDeleteDialogOpen(true)}
                     onWikilinkClick={handleWikilinkClick}
                   />
                 )
@@ -593,6 +641,15 @@ export function MainApp() {
           )}
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        isOpen={isDeleteDialogOpen}
+        noteName={currentNote?.title || currentNote?.note_path.replace(/\.md$/, '') || 'Note'}
+        isDeleting={isDeleting}
+        onConfirm={handleDeleteNote}
+        onCancel={() => setIsDeleteDialogOpen(false)}
+      />
     </div>
   );
 }
