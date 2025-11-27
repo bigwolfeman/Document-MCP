@@ -20,6 +20,7 @@ declare global {
   interface Window {
     openai: {
       toolOutput: any;
+      toolInput?: any;
     };
   }
 }
