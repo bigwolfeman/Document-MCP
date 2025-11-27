@@ -64,6 +64,15 @@ def widget_resource() -> dict:
         
     html_content = widget_path.read_text(encoding="utf-8")
     
+    # Replace relative asset paths with absolute URLs for ChatGPT iframe
+    config = get_config()
+    base_url = config.hf_space_url.rstrip("/")
+    
+    # Vite builds usually output /assets/...
+    # We replace both src and href attributes
+    html_content = html_content.replace('src="/assets/', f'src="{base_url}/assets/')
+    html_content = html_content.replace('href="/assets/', f'href="{base_url}/assets/')
+    
     return {
         "contents": [{
             "uri": "ui://widget/note.html",
