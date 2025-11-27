@@ -21,7 +21,7 @@ from starlette.responses import Response
 from fastmcp.server.http import StreamableHTTPSessionManager, set_http_request
 from fastapi.responses import FileResponse
 
-from .routes import auth, index, notes, search, graph, demo
+from .routes import auth, index, notes, search, graph, demo, system
 from ..mcp.server import mcp
 from ..services.seed import init_and_seed
 from ..services.config import get_config
@@ -111,6 +111,7 @@ app.include_router(search.router, tags=["search"])
 app.include_router(index.router, tags=["index"])
 app.include_router(graph.router, tags=["graph"])
 app.include_router(demo.router, tags=["demo"])
+app.include_router(system.router, tags=["system"])
 
 
 @app.api_route("/mcp", methods=["GET", "POST", "DELETE"])

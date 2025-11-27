@@ -208,6 +208,20 @@ export async function rebuildIndex(): Promise<RebuildResponse> {
 }
 
 /**
+ * Retrieve system logs
+ */
+export interface LogEntry {
+  timestamp: string;
+  level: string;
+  message: string;
+  extra: Record<string, any>;
+}
+
+export async function getLogs(): Promise<LogEntry[]> {
+  return apiFetch<LogEntry[]>('/api/system/logs');
+}
+
+/**
  * Move or rename a note to a new path
  */
 export async function moveNote(oldPath: string, newPath: string): Promise<Note> {
