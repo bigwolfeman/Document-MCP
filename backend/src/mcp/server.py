@@ -386,3 +386,49 @@ if __name__ == "__main__":
     else:
         logger.info("Starting MCP server", extra={"transport": transport})
         mcp.run(transport=transport)
+
+# Monkey-patch tool metadata for ChatGPT Apps SDK support
+# This workaround is needed because the installed version of fastmcp 
+# does not support passing '_meta' directly to the @mcp.tool decorator.
+try:
+    if hasattr(mcp, "_tool_manager") and hasattr(mcp._tool_manager, "_tools"):
+        _tm = mcp._tool_manager
+        
+        # Patch read_note
+        if "read_note" in _tm._tools:
+            _tm._tools["read_note"].meta = {
+                "openai": {
+                    "outputTemplate": "ui://widget/note.html",
+                    "toolInvocation": {
+                        "invoking": "Opening note...",
+                        "invoked": "Note opened."
+                    }
+                }
+            }
+            
+        # Patch write_note
+        if "write_note" in _tm._tools:
+            _tm._tools["write_note"].meta = {
+                "openai": {
+                    "outputTemplate": "ui://widget/note.html",
+                    "toolInvocation": {
+                        "invoking": "Saving note...",
+                        "invoked": "Note saved."
+                    }
+                }
+            }
+            
+        # Patch search_notes
+        if "search_notes" in _tm._tools:
+            _tm._tools["search_notes"].meta = {
+                "openai": {
+                    "outputTemplate": "ui://widget/note.html",
+                    "toolInvocation": {
+                        "invoking": "Searching...",
+                        "invoked": "Search complete."
+                    }
+                }
+            }
+        logger.info("Successfully patched ChatGPT widget metadata for tools.")
+except Exception as e:
+    logger.warning(f"Failed to patch tool metadata: {e}")
