@@ -1,104 +1,76 @@
-# Implementation Plan: [FEATURE]
+# Implementation Plan: ChatGPT App Integration
 
-**Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
-**Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
+**Branch**: `003-chatgpt-app-integration` | **Date**: 2025-11-26 | **Spec**: [spec.md](spec.md)
+**Input**: Feature specification from `/specs/003-chatgpt-app-integration/spec.md`
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 
 ## Summary
 
-[Extract from feature spec: primary requirement + technical approach from research]
+Adapt the backend to support ChatGPT Apps SDK by adding a static service token auth strategy, configuring CORS for ChatGPT, and updating MCP tools to return metadata for widget rendering. Create a standalone `widget.html` entry point in the frontend.
 
 ## Technical Context
 
-<!--
-  ACTION REQUIRED: Replace the content in this section with the technical details
-  for the project. The structure here is presented in advisory capacity to guide
-  the iteration process.
--->
-
-**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]  
-**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]  
-**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]  
-**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]  
-**Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
-**Project Type**: [single/web/mobile - determines source structure]  
-**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]  
-**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]  
-**Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
+**Language/Version**: Python 3.11+, TypeScript/React 18
+**Primary Dependencies**: `fastmcp`, `fastapi`, `vite`
+**Storage**: No schema changes; relies on existing vault.
+**Testing**: `pytest` for auth/tools; manual verification for widgets.
+**Target Platform**: Hugging Face Spaces (Docker) + ChatGPT UI.
+**Project Type**: Full Stack (Backend API + Frontend Widget).
+**Performance Goals**: Widget load < 500ms.
+**Constraints**: Must work alongside existing "local dev" and "HF OAuth" modes.
+**Scale/Scope**: Demo scale (single tenant impersonation via service token).
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+-   **Brownfield Integration**: Respects existing auth structure (adding a strategy, not rewriting). Reuses `NoteViewer` component.
+-   **Test-Backed**: New auth strategy will be unit tested.
+-   **Simplicity**: Using static token instead of full OIDC.
 
 ## Project Structure
 
 ### Documentation (this feature)
 
 ```text
-specs/[###-feature]/
-├── plan.md              # This file (/speckit.plan command output)
-├── research.md          # Phase 0 output (/speckit.plan command)
-├── data-model.md        # Phase 1 output (/speckit.plan command)
-├── quickstart.md        # Phase 1 output (/speckit.plan command)
-├── contracts/           # Phase 1 output (/speckit.plan command)
-└── tasks.md             # Phase 2 output (/speckit.tasks command - NOT created by /speckit.plan)
+specs/003-chatgpt-app-integration/
+├── plan.md              # This file
+├── research.md          # Phase 0 output
+├── data-model.md        # Phase 1 output
+├── quickstart.md        # Phase 1 output
+└── tasks.md             # Phase 2 output
 ```
 
 ### Source Code (repository root)
-<!--
-  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
-  for this feature. Delete unused options and expand the chosen structure with
-  real paths (e.g., apps/admin, packages/something). The delivered plan must
-  not include Option labels.
--->
 
 ```text
-# [REMOVE IF UNUSED] Option 1: Single project (DEFAULT)
-src/
-├── models/
-├── services/
-├── cli/
-└── lib/
-
-tests/
-├── contract/
-├── integration/
-└── unit/
-
-# [REMOVE IF UNUSED] Option 2: Web application (when "frontend" + "backend" detected)
 backend/
 ├── src/
-│   ├── models/
+│   ├── api/
+│   │   ├── main.py            # Update: CORS, widget route
+│   │   └── middleware/
+│   │       └── auth_middleware.py # Update: Strategy usage
 │   ├── services/
-│   └── api/
+│   │   ├── auth.py            # Update: Refactor to Strategy pattern
+│   │   └── config.py          # Update: New config fields
+│   └── mcp/
+│       └── server.py          # Update: Tool return types
 └── tests/
+    └── unit/
+        └── test_auth_strategy.py # New test
 
 frontend/
-├── src/
-│   ├── components/
-│   ├── pages/
-│   └── services/
-└── tests/
-
-# [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
-api/
-└── [same as backend above]
-
-ios/ or android/
-└── [platform-specific structure: feature modules, UI flows, platform tests]
+├── vite.config.ts             # Update: Multi-page build
+├── widget.html                # New: Widget entry point
+└── src/
+    └── widget.tsx             # New: Widget root component
 ```
 
-**Structure Decision**: [Document the selected structure and reference the real
-directories captured above]
+**Structure Decision**: Multi-page build for Frontend; Strategy pattern for Backend Auth.
 
 ## Complexity Tracking
 
-> **Fill ONLY if Constitution Check has violations that must be justified**
-
 | Violation | Why Needed | Simpler Alternative Rejected Because |
 |-----------|------------|-------------------------------------|
-| [e.g., 4th project] | [current need] | [why 3 projects insufficient] |
-| [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient] |
+| Multi-page Vite | To isolate widget styles/scripts from main app | Iframing the full app is too heavy and leaky for ChatGPT widgets. |
