@@ -62,62 +62,70 @@ const WidgetApp = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // In a real ChatGPT app, toolOutput is injected before script execution or available on load.
-    // We check it here.
-    const toolOutput = window.openai.toolOutput;
-    console.log("Widget loaded with toolOutput:", toolOutput);
-
-    if (!toolOutput) {
-      // Check for toolInput to show loading state (waiting for tool execution)
-      // Note: window.openai types might vary, we check safely
-      const toolInput = (window.openai as any).toolInput;
-      if (toolInput) {
-        console.log("Tool input present, waiting for output:", toolInput);
-        setView('loading');
-        return;
+    // Function to check for data
+    const checkData = () => {
+      const toolOutput = window.openai.toolOutput;
+      if (toolOutput) {
+        console.log("Tool output found:", toolOutput);
+        if (toolOutput.note) {
+          setView('note');
+          setData(toolOutput.note);
+        } else if (toolOutput.results) {
+          setView('search');
+          setData(toolOutput.results);
+        } else {
+          console.warn("Unknown tool output format", toolOutput);
+          setError("Unknown content format.");
+          setView('error');
+        }
+        return true;
       }
+      return false;
+    };
 
-      // Fallback for dev testing via URL
-      const params = new URLSearchParams(window.location.search);
-      const mockType = params.get('type');
-      if (mockType === 'note') {
-        // Mock note data
-        setView('note');
-        setData({
-          title: "Demo Note",
-          note_path: "demo.md",
-          body: "# Demo Note\n\nThis is a **markdown** note rendered in the widget.",
-          version: 1,
-          size_bytes: 100,
-          created: new Date().toISOString(),
-          updated: new Date().toISOString(),
-          metadata: {}
-        });
-      } else if (mockType === 'search') {
-        setView('search');
-        setData([
-          { title: "Result 1", note_path: "res1.md", snippet: "Found match...", score: 1.0, updated: new Date() }
-        ]);
-      } else {
-        setError("No content data found. (window.openai.toolOutput is empty)");
-        setView('error');
-      }
-      return;
-    }
+    // Check immediately
+    if (checkData()) return;
 
-    // Detect content type based on shape
-    if (toolOutput.note) {
-      setView('note');
-      setData(toolOutput.note);
-    } else if (toolOutput.results) {
-      setView('search');
-      setData(toolOutput.results);
+    // If not found, check if we have toolInput (loading state)
+    // Note: window.openai types might vary, we check safely
+    const toolInput = (window.openai as any).toolInput;
+    if (toolInput) {
+      console.log("Tool input present, waiting for output:", toolInput);
+      setView('loading');
     } else {
-      // Fallback: try to guess or show raw
-      console.warn("Unknown tool output format", toolOutput);
-      setError("Unknown content format.");
-      setView('error');
+       // Fallback for dev testing via URL (only if no toolInput either)
+        const params = new URLSearchParams(window.location.search);
+        const mockType = params.get('type');
+        if (mockType === 'note') {
+            // ... existing mock logic ...
+            setView('note');
+            setData({
+                title: "Demo Note",
+                note_path: "demo.md",
+                body: "# Demo Note\n\nMock note.",
+                version: 1,
+                size_bytes: 100,
+                created: new Date().toISOString(),
+                updated: new Date().toISOString(),
+                metadata: {}
+            });
+            return;
+        } else if (mockType === 'search') {
+            setView('search');
+            setData([{ title: "Result 1", note_path: "res1.md", snippet: "Match", score: 1, updated: new Date() }]);
+            return;
+        }
+        
+        // If absolutely nothing, show error (or keep loading if we suspect latency)
+        // But sticking to 'loading' is safer than error if we are polling.
     }
+
+    // Poll for data injection
+    const interval = setInterval(() => {
+       if (checkData()) clearInterval(interval);
+    }, 500);
+
+    return () => clearInterval(interval);
   }, []);
 
   const handleWikilinkClick = (linkText: string) => {
