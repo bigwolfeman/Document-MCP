@@ -442,5 +442,44 @@ async def move_note(
         raise HTTPException(status_code=500, detail=f"Failed to move note: {str(e)}")
 
 
+@router.delete("/api/notes/{path:path}", status_code=204)
+async def delete_note(path: str):
+    """Delete a note."""
+    user_id = get_user_id()
+    vault_service = VaultService()
+    indexer_service = IndexerService()
+    db_service = DatabaseService()
+
+    try:
+        # URL decode the path
+        note_path = unquote(path)
+
+        # Delete note from vault
+        vault_service.delete_note(user_id, note_path)
+
+        # Delete from index
+        conn = db_service.connect()
+        try:
+            with conn:
+                # Delete from all index tables
+                conn.execute("DELETE FROM note_metadata WHERE user_id = ? AND note_path = ?", (user_id, note_path))
+                conn.execute("DELETE FROM note_links WHERE user_id = ? AND source_path = ?", (user_id, note_path))
+                conn.execute("DELETE FROM note_tags WHERE user_id = ? AND note_path = ?", (user_id, note_path))
+        finally:
+            conn.close()
+
+        # Update index health
+        conn = db_service.connect()
+        try:
+            with conn:
+                indexer_service.update_index_health(conn, user_id)
+        finally:
+            conn.close()
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Note not found: {path}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete note: {str(e)}")
+
+
 __all__ = ["router", "ConflictError"]
 

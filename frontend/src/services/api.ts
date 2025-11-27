@@ -71,7 +71,19 @@ async function apiFetch<T>(
   if (!response.ok) {
     let errorData: APIError;
     try {
-      errorData = await response.json();
+      const jsonData = await response.json();
+      // Handle both standard APIError format and FastAPI HTTPException format
+      if ('detail' in jsonData && typeof jsonData.detail === 'string') {
+        // FastAPI HTTPException with detail as string
+        errorData = {
+          error: jsonData.error || 'Error',
+          message: jsonData.detail,
+          detail: jsonData.detail as any,
+        };
+      } else {
+        // Standard APIError format
+        errorData = jsonData as APIError;
+      }
     } catch {
       errorData = {
         error: 'Unknown error',
@@ -215,6 +227,16 @@ export async function moveNote(oldPath: string, newPath: string): Promise<Note> 
   return apiFetch<Note>(`/api/notes/${encodedPath}`, {
     method: 'PATCH',
     body: JSON.stringify({ new_path: newPath }),
+  });
+}
+
+/**
+ * Delete a note
+ */
+export async function deleteNote(path: string): Promise<void> {
+  const encodedPath = encodeURIComponent(path);
+  return apiFetch<void>(`/api/notes/${encodedPath}`, {
+    method: 'DELETE',
   });
 }
 
