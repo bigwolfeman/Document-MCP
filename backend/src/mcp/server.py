@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP
+from fastmcp.tools.tool import ToolResult
+from mcp.types import TextContent
 from pydantic import Field
 
 # Load environment variables from .env file
@@ -305,11 +307,16 @@ def delete_note(
 @mcp.tool(
     name="search_notes",
     description="Full-text search with snippets and recency-aware scoring.",
+    meta={
+        "openai/outputTemplate": "ui://widget/note.html",
+        "openai/toolInvocation/invoking": "Searching...",
+        "openai/toolInvocation/invoked": "Search complete."
+    }
 )
 def search_notes(
     query: str = Field(..., description="Non-empty search query (bm25 + recency)."),
     limit: int = Field(50, ge=1, le=100, description="Result cap between 1 and 100."),
-) -> dict:
+) -> ToolResult:
     start_time = time.time()
     user_id = _current_user_id()
 
@@ -339,23 +346,10 @@ def search_notes(
             "updated": r["updated"] if isinstance(r["updated"], str) else r["updated"].isoformat()
         })
 
-    return {
-        "content": [
-            {
-                "type": "text",
-                "text": f"Found {len(results)} notes matching '{query}'."
-            }
-        ],
-        "structuredContent": {
-            "results": structured_results
-        },
-        "_meta": {
-            "openai/outputTemplate": "ui://widget/note.html",
-            "openai/toolInvocation/invoking": f"Searching for '{query}'...",
-            "openai/toolInvocation/invoked": f"Found {len(results)} results."
-        },
-        "isError": False
-    }
+    return ToolResult(
+        content=[TextContent(type="text", text=f"Found {len(results)} notes matching '{query}'.")],
+        structured_content={"results": structured_results}
+    )
 
 
 
@@ -393,37 +387,3 @@ if __name__ == "__main__":
     else:
         logger.info("Starting MCP server", extra={"transport": transport})
         mcp.run(transport=transport)
-
-# Monkey-patch tool metadata for ChatGPT Apps SDK support
-# This workaround is needed because the installed version of fastmcp 
-# does not support passing '_meta' directly to the @mcp.tool decorator.
-try:
-    if hasattr(mcp, "_tool_manager") and hasattr(mcp._tool_manager, "_tools"):
-        _tm = mcp._tool_manager
-        
-        # Patch read_note
-        if "read_note" in _tm._tools:
-            _tm._tools["read_note"].meta = {
-                "openai/outputTemplate": "ui://widget/note.html",
-                "openai/toolInvocation/invoking": "Opening note...",
-                "openai/toolInvocation/invoked": "Note opened."
-            }
-            
-        # Patch write_note
-        if "write_note" in _tm._tools:
-            _tm._tools["write_note"].meta = {
-                "openai/outputTemplate": "ui://widget/note.html",
-                "openai/toolInvocation/invoking": "Saving note...",
-                "openai/toolInvocation/invoked": "Note saved."
-            }
-            
-        # Patch search_notes
-        if "search_notes" in _tm._tools:
-            _tm._tools["search_notes"].meta = {
-                "openai/outputTemplate": "ui://widget/note.html",
-                "openai/toolInvocation/invoking": "Searching...",
-                "openai/toolInvocation/invoked": "Search complete."
-            }
-        logger.info("Successfully patched ChatGPT widget metadata for tools.")
-except Exception as e:
-    logger.warning(f"Failed to patch tool metadata: {e}")
