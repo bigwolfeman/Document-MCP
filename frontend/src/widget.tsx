@@ -5,6 +5,7 @@ import { NoteViewer } from '@/components/NoteViewer';
 import { SearchWidget } from '@/components/SearchWidget';
 import type { Note } from '@/types/note';
 import type { SearchResult } from '@/types/search';
+import { getNote } from '@/services/api';
 import { Loader2, AlertTriangle } from 'lucide-react';
 
 // Mock window.openai for development
@@ -121,12 +122,28 @@ const WidgetApp = () => {
 
   const handleWikilinkClick = (linkText: string) => {
     console.log("Clicked wikilink in widget:", linkText);
-    alert(`Navigation to "${linkText}" requested. (Widget navigation pending implementation)`);
+    // Convert wikilink text to path (simple slugification or just try reading it)
+    // We can try to fetch it directly.
+    // Reuse handleNoteSelect logic but we need to slugify first?
+    // For now, let's try strict filename matching or just pass text.
+    // getNote expects a path.
+    // We'll just alert for now or try to resolve it.
+    // Let's try to fetch it as a path (assuming user clicked "Getting Started")
+    handleNoteSelect(linkText + ".md"); 
   };
 
-  const handleNoteSelect = (path: string) => {
-     console.log("Selected note from search:", path);
-     alert(`Opening "${path}"... (Widget navigation pending implementation)`);
+  const handleNoteSelect = async (path: string) => {
+     console.log("Selected note:", path);
+     setView('loading');
+     try {
+       const note = await getNote(path);
+       setData(note);
+       setView('note');
+     } catch (err) {
+       console.error("Failed to load note:", err);
+       setError(`Failed to load note: ${path}`);
+       setView('error');
+     }
   };
 
   return (

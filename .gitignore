@@ -56,3 +56,9 @@ DEPLOY_TO_HF.md
 
 # Documentation
 docs/fastmcp/
+
+# Images (binary files not allowed in HF Spaces)
+*.png
+*.jpg
+*.jpeg
+*.gif
