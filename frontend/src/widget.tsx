@@ -4,7 +4,7 @@ import './index.css';
 import { NoteViewer } from '@/components/NoteViewer';
 import { SearchWidget } from '@/components/SearchWidget';
 import type { Note } from '@/types/note';
-import type { SearchResult } => '@/types/search';
+import type { SearchResult } from '@/types/search';
 import { Loader2, AlertTriangle } from 'lucide-react';
 
 // Mock window.openai for development
