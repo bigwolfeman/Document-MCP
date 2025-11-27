@@ -16,6 +16,7 @@ load_dotenv()
 
 from ..services import IndexerService, VaultNote, VaultService
 from ..services.auth import AuthError, AuthService
+from ..services.config import get_config
 
 try:
     from fastmcp.server.http import _current_http_request  # type: ignore
