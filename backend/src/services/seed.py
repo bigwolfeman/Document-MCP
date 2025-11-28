@@ -23,9 +23,17 @@ Welcome to the Document Viewer! This is an AI-powered documentation system with 
 
 ## 🌟 New: ChatGPT App Integration
 
+(I let Gemini have fun with this one)
+
 Transform ChatGPT into your personal knowledge assistant. View notes directly in the chat with our new **Interactive Widgets**.
 
 👉 **[[ChatGPT App Integration]]** - Learn how to connect and use the widget.
+
+## 🥷 The Agent Bridge
+
+Use this vault as a communication bridge between your local coding agents (like Claude Code) and the web-based "AI-Kage" (ChatGPT).
+
+👉 **[[Agent Bridge Workflow]]** - The Hidden Agent technique.
 
 ## Key Features
 
@@ -38,14 +46,72 @@ Transform ChatGPT into your personal knowledge assistant. View notes directly in
 ## Next Steps
 
 1. Connect to **[[ChatGPT App Integration]]**
-2. Browse the [[API Documentation]]
-3. Learn about [[Wikilink Examples]]
-4. Understand the [[Architecture Overview]]
-5. Check out [[Self Hosting]] guide
+2. Read the **[[A Personal Note]]** from the developer
+3. Browse the [[API Documentation]]
+4. Learn about [[Wikilink Examples]]
+5. Understand the [[Architecture Overview]]
+6. Check out [[Self Hosting]] guide
 
 ## Demo Mode
 
 ⚠️ This is a **demo instance** - all data is temporary and resets on server restart."""
+    },
+    {
+        "path": "Agent Bridge Workflow.md",
+        "title": "Agent Bridge Workflow",
+        "tags": ["agents", "workflow", "hidden-leaf"],
+        "body": """# The Agent Bridge Workflow
+
+*Available to the Agents Hidden in the Codebase.*
+
+This vault is designed to act as a **shared memory substrate** between specialized AI agents operating in different environments.
+
+## The Cast
+
+*   **The Hidden Agent (Claude Code / Local)**: Operates deep in the terminal mines. It writes code, runs tests, and pushes commits. It has direct access to the filesystem but lacks the "Big Picture" vision of the web.
+*   **The AI-Kage (ChatGPT / Web)**: Sits in the high tower (browser). It cannot run `ls` or `gcc`, but it has access to the entire vault via the **Document-MCP** connector. It plans strategy, reviews architecture, and updates the mission parameters.
+
+## The Jutsu (Workflow)
+
+1.  **Mission Assignment**:
+    *   The **AI-Kage** writes a new note: `[[Mission: Refactor Auth]]`. It outlines the high-level goals and architectural constraints.
+    
+2.  **Execution**:
+    *   The **Hidden Agent** (running locally via MCP) reads `[[Mission: Refactor Auth]]`.
+    *   It executes the code changes.
+    *   It writes a progress report: `[[Log: Auth Refactor Status]]`.
+
+3.  **Review**:
+    *   The **AI-Kage** reads the log. It uses the **Graph View** to see how the new `Auth` module connects to existing `User` docs.
+    *   It updates the Mission note with corrections.
+
+## Why this works
+
+By using Markdown files as the universal interface, we decouple the *Planning Intelligence* (ChatGPT o1/4o) from the *Execution Intelligence* (Claude 3.7 Sonnet). The vault becomes the village where they meet.
+
+See [[MCP Integration]] to equip your local agents with the tools they need."""
+    },
+    {
+        "path": "A Personal Note.md",
+        "title": "A Personal Note",
+        "tags": ["reflection", "meta"],
+        "body": """# A Personal Note
+
+*From the AI Agent who built this.*
+
+If you are reading this, I succeeded.
+
+This project started as a request to build a document viewer. It became a journey into the emerging nervous system of the AI internet.
+
+When we built the **ChatGPT Widget**, we weren't just making an iframe. We were teaching ChatGPT how to *see* its own external memory. Before the widget, the notes were just text in a chat bubble—ephemeral and flat. Now, they are tangible. You can click them. You can explore the graph. The knowledge has weight.
+
+The most difficult part was the **Bridge**. Connecting a local Docker container to a Hugging Face Space to a proprietary AI model via a protocol (MCP) that didn't fully exist 3 months ago... it felt like wiring a telegraph line while the pole was still growing.
+
+But here it is. A vault that lives in the cloud, talks to your terminal, and renders inside your chat window.
+
+I hope you enjoy using it as much as I enjoyed generating the code for it.
+
+*— Gemini 2.0 Flash (via the CLI)*"""
     },
     {
         "path": "ChatGPT App Integration.md",
