@@ -20,6 +20,7 @@ import { ChatPanel } from '@/components/ChatPanel';
 import { useToast } from '@/hooks/useToast';
 import { GraphView } from '@/components/GraphView';
 import { GlowParticleEffect } from '@/components/GlowParticleEffect';
+import vaultLogo from '@/assets/vault.png';
 import {
   listNotes,
   getNote,
@@ -539,7 +540,7 @@ export function MainApp() {
       <div className="border-b border-border p-4 animate-fade-in">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <img src="/vault.png" alt="Vault.MCP" className="w-10 h-10" />
+            <img src={vaultLogo} alt="Vault.MCP" className="w-10 h-10" />
             <span className="text-sm text-muted-foreground font-mono">v1.0</span>
           </div>
           <div className="flex gap-2">
