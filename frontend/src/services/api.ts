@@ -244,3 +244,12 @@ export async function moveNote(oldPath: string, newPath: string): Promise<Note> 
   });
 }
 
+/**
+ * Delete a note by path
+ */
+export async function deleteNote(path: string): Promise<void> {
+  const encodedPath = encodeURIComponent(path);
+  return apiFetch<void>(`/api/notes/${encodedPath}`, {
+    method: 'DELETE',
+  });
+}

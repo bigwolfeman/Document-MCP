@@ -24,6 +24,7 @@ import {
   getIndexHealth,
   createNote,
   moveNote,
+  deleteNote,
   type BacklinkResult,
   APIException,
 } from '@/services/api';
@@ -63,6 +64,8 @@ export function MainApp() {
   const [newFolderName, setNewFolderName] = useState('');
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(isDemoSession());
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeletingNote, setIsDeletingNote] = useState(false);
 
   useEffect(() => {
     const handleAuthChange = () => {
@@ -204,6 +207,51 @@ export function MainApp() {
   // Handle editor cancel
   const handleEditCancel = () => {
     setIsEditMode(false);
+  };
+
+  // Handle delete button click
+  const handleDeleteClick = () => {
+    if (isDemoMode) {
+      toast.error('Demo mode is read-only. Sign in with Hugging Face to delete notes.');
+      return;
+    }
+    setIsDeleteDialogOpen(true);
+  };
+
+  // Handle delete confirmation
+  const handleConfirmDelete = async () => {
+    if (!selectedPath || isDeletingNote) return;
+
+    setIsDeletingNote(true);
+    setError(null);
+
+    try {
+      await deleteNote(selectedPath);
+
+      // Refresh notes list
+      const notesList = await listNotes();
+      setNotes(notesList);
+
+      // Clear selection and close dialog
+      setSelectedPath(null);
+      setCurrentNote(null);
+      setBacklinks([]);
+      setIsDeleteDialogOpen(false);
+
+      const displayName = selectedPath.replace(/\.md$/, '');
+      toast.success(`Note "${displayName}" deleted successfully`);
+    } catch (err) {
+      let errorMessage = 'Failed to delete note';
+      if (err instanceof APIException) {
+        errorMessage = err.message || err.error;
+      } else if (err instanceof Error) {
+        errorMessage = err.message;
+      }
+      toast.error(errorMessage);
+      console.error('Error deleting note:', err);
+    } finally {
+      setIsDeletingNote(false);
+    }
   };
 
   // Handle note dialog open change
@@ -597,6 +645,7 @@ export function MainApp() {
                       note={currentNote}
                       backlinks={backlinks}
                       onEdit={isDemoMode ? undefined : handleEdit}
+                      onDelete={isDemoMode ? undefined : handleDeleteClick}
                       onWikilinkClick={handleWikilinkClick}
                     />
                   )
@@ -647,6 +696,34 @@ export function MainApp() {
           )}
         </div>
       </div>
+
+      {/* Delete confirmation modal */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Note</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{currentNote?.title}"? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteDialogOpen(false)}
+              disabled={isDeletingNote}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDelete}
+              disabled={isDeletingNote}
+            >
+              {isDeletingNote ? 'Deleting...' : 'Delete Note'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
