@@ -78,10 +78,10 @@ class RAGIndexService:
         # Set up Gemini
         try:
             # Configure global settings
-            # Using 2.5 Flash: Best for multi-tool agents (54% SWE-Bench, +15% long-horizon tasks)
-            # See research: 2.0 Flash has only 17.88% multi-turn accuracy vs ~80% for 2.5
+            # Using 2.5 Flash-Lite: 15 RPM quota, good balance for multi-tool agents
+            # Backup from 2.5-flash (10 RPM, better quality but lower quota)
             Settings.llm = GoogleGenAI(
-                model="gemini-2.5-flash",
+                model="gemini-2.5-flash-lite",
                 api_key=self.config.google_api_key
             )
             Settings.embed_model = GoogleGenAIEmbedding(
