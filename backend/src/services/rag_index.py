@@ -22,10 +22,10 @@ from llama_index.core import (
 try:
     from llama_index.llms.google_genai import Gemini
     from llama_index.embeddings.google_genai import GeminiEmbedding
-except ImportError:
+except ImportError as e:
     Gemini = None
     GeminiEmbedding = None
-    logger.warning("Could not import google_genai modules. RAG features will be disabled.")
+    logger.warning(f"Could not import google_genai modules: {e}")
 
 from llama_index.core.base.response.schema import Response as LlamaResponse
 from llama_index.core.llms import ChatMessage as LlamaChatMessage, MessageRole
