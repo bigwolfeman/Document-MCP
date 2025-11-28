@@ -54,14 +54,30 @@ export function ChatPanel({ onNavigateToNote }: ChatPanelProps) {
       };
       
       setMessages(prev => [...prev, assistantMsg]);
+import { APIException } from '@/services/api';
+
+// ...
+
     } catch (err) {
       console.error("Chat error:", err);
-      toast.error("Failed to get response from agent");
+      let errorMessage = "Failed to get response from agent";
+      if (err instanceof APIException) {
+        errorMessage = err.message || err.error;
+      } else if (err instanceof Error) {
+        errorMessage = err.message;
+      }
+      toast.error(errorMessage);
       // Optionally remove user message or show error state
     } finally {
       setIsLoading(false);
     }
   };
+
+// ...
+
+      {/* Input Area */}
+      <div className="p-4 pb-6 border-t border-border">
+        <div className="flex gap-2">
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
