@@ -18,7 +18,7 @@ DEFAULT_ERRORS: Dict[int, Tuple[str, str]] = {
     status.HTTP_403_FORBIDDEN: ("forbidden", "Forbidden"),
     status.HTTP_404_NOT_FOUND: ("not_found", "Resource not found"),
     status.HTTP_409_CONFLICT: ("version_conflict", "Resource version conflict"),
-    status.HTTP_413_REQUEST_ENTITY_TOO_LARGE: (
+    status.HTTP_413_CONTENT_TOO_LARGE: (
         "payload_too_large",
         "Payload exceeds allowed size",
     ),
@@ -57,13 +57,39 @@ def _response(status_code: int, detail: Any) -> JSONResponse:
 async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
-    detail = {"detail": {"errors": exc.errors()}}
+    # Transform pydantic errors into more user-friendly format
+    errors = []
+    for error in exc.errors():
+        field = ".".join(str(loc) for loc in error["loc"] if loc != "body")
+        errors.append({
+            "field": field or "request",
+            "reason": error["msg"],
+            "type": error["type"]
+        })
+    
+    detail = {
+        "error": "validation_error",
+        "message": "Request validation failed",
+        "detail": {"fields": errors}
+    }
+    logger.warning(
+        "Validation error",
+        extra={"url": str(request.url), "errors": errors}
+    )
     return _response(status.HTTP_400_BAD_REQUEST, detail)
 
 
 async def http_exception_handler(
     request: Request, exc: StarletteHTTPException
 ) -> JSONResponse:
+    logger.warning(
+        "HTTP exception",
+        extra={
+            "url": str(request.url),
+            "status_code": exc.status_code,
+            "detail": exc.detail
+        }
+    )
     return _response(exc.status_code, exc.detail)
 
 
