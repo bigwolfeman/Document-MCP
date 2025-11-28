@@ -1,4 +1,4 @@
-import { SourceReference } from '@/types/rag';
+import type { SourceReference } from '@/types/rag';
 import { FileText, ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';

@@ -1,4 +1,4 @@
-import { ChatMessage as ChatMessageType } from '@/types/rag';
+import type { ChatMessage as ChatMessageType } from '@/types/rag';
 import { cn } from '@/lib/utils';
 import { User, Bot } from 'lucide-react';
 import { SourceList } from './SourceList';

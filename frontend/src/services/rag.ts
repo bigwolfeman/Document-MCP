@@ -1,4 +1,4 @@
-import { ChatRequest, ChatResponse, StatusResponse } from '@/types/rag';
+import type { ChatRequest, ChatResponse, StatusResponse } from '@/types/rag';
 import { apiFetch } from './api';
 
 export async function sendChat(request: ChatRequest): Promise<ChatResponse> {

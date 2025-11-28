@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ChatMessage } from './ChatMessage';
 import { sendChat } from '@/services/rag';
-import { ChatMessage as ChatMessageType } from '@/types/rag';
+import type { ChatMessage as ChatMessageType } from '@/types/rag';
 import { useToast } from '@/hooks/useToast';
 
 interface ChatPanelProps {
