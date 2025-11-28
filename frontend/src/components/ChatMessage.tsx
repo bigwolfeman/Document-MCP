@@ -1,6 +1,6 @@
-import type { ChatMessage as ChatMessageType } from '@/types/rag';
+import type { ChatMessage as ChatMessageType, NoteWritten } from '@/types/rag';
 import { cn } from '@/lib/utils';
-import { User, Bot } from 'lucide-react';
+import { User, Bot, FilePlus, Edit } from 'lucide-react';
 import { SourceList } from './SourceList';
 
 interface ChatMessageProps {
@@ -25,6 +25,23 @@ export function ChatMessage({ message, onSourceClick }: ChatMessageProps) {
           {message.content}
         </div>
         
+        {!isUser && message.notes_written && message.notes_written.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-2">
+            {message.notes_written.map((note, i) => (
+              <button
+                key={i}
+                onClick={() => onSourceClick(note.path)}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 hover:bg-green-500/20 text-xs transition-colors"
+              >
+                {note.action === 'created' ? <FilePlus className="h-3 w-3" /> : <Edit className="h-3 w-3" />}
+                <span className="font-medium">
+                  {note.action === 'created' ? 'Created' : 'Updated'}: {note.title}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {!isUser && message.sources && (
           <SourceList sources={message.sources} onSourceClick={onSourceClick} />
         )}
