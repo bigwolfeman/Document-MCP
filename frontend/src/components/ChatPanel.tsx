@@ -107,7 +107,7 @@ export function ChatPanel({ onNavigateToNote }: ChatPanelProps) {
       </div>
 
       {/* Input Area */}
-      <div className="p-4 pb-10 border-t border-border">
+      <div className="p-4 pb-14 border-t border-border">
         <div className="flex gap-2">
           <Textarea
             value={input}
