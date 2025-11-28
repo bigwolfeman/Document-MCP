@@ -308,13 +308,20 @@ class RAGIndexService:
             )
         )
         
+        
         all_tools = tools + [query_tool]
         
-        # Use AgentRunner (factory for best agent type)
-        from llama_index.core.agent import AgentRunner
-        agent = AgentRunner.from_llm(
-            llm=Settings.llm,
+        # Use FunctionAgent (new in 0.14.x, replaces FunctionCallingAgent)
+        try:
+            from llama_index.core.agent import FunctionAgent
+        except ImportError:
+            # Fallback for older versions just in case, or log error
+            logger.error("Could not import FunctionAgent. Check llama-index-core version.")
+            raise
+
+        agent = FunctionAgent.from_tools(
             tools=all_tools,
+            llm=Settings.llm,
             chat_history=history,
             verbose=True,
             system_prompt="You are a documentation assistant. Use vault_search to find info. You can create notes and folders."
