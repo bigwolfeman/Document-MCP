@@ -78,8 +78,9 @@ class RAGIndexService:
         # Set up Gemini
         try:
             # Configure global settings
+            # Using flash-lite: 30 RPM (vs 15 for regular flash) - better for tool-heavy agent
             Settings.llm = GoogleGenAI(
-                model="gemini-2.0-flash",
+                model="gemini-2.0-flash-lite",
                 api_key=self.config.google_api_key
             )
             Settings.embed_model = GoogleGenAIEmbedding(
