@@ -15,7 +15,10 @@ import { SearchBar } from '@/components/SearchBar';
 import { NoteViewer } from '@/components/NoteViewer';
 import { NoteViewerSkeleton } from '@/components/NoteViewerSkeleton';
 import { NoteEditor } from '@/components/NoteEditor';
+<<<<<<< HEAD
 import { ChatPanel } from '@/components/ChatPanel';
+=======
+>>>>>>> origin/004-OpenAI
 import { useToast } from '@/hooks/useToast';
 import { GraphView } from '@/components/GraphView';
 import {
@@ -446,6 +449,7 @@ export function MainApp() {
                 Sign in
               </Button>
             )}
+<<<<<<< HEAD
             <Button
               variant={isChatOpen ? "secondary" : "ghost"}
               size="sm"
@@ -454,6 +458,8 @@ export function MainApp() {
             >
               <MessageCircle className="h-4 w-4" />
             </Button>
+=======
+>>>>>>> origin/004-OpenAI
             <Button
               variant={isGraphView ? "secondary" : "ghost"}
               size="sm"
@@ -474,7 +480,11 @@ export function MainApp() {
         {isDemoMode && (
           <div className="border-b border-border bg-muted/40 px-4 py-2 text-sm text-muted-foreground flex flex-wrap items-center justify-between gap-2">
             <span>
+<<<<<<< HEAD
               You are browsing the shared demo vault in read-only mode. Sign in with your Hugging Face account to create and edit notes. Or use the integrated chat agent to fubar the whole note system and eat up all my gemini api credits.
+=======
+              You are browsing the shared demo vault in read-only mode. Sign in with your Hugging Face account to create and edit notes.
+>>>>>>> origin/004-OpenAI
             </span>
             <Button variant="outline" size="sm" onClick={() => login()}>
               Sign in
@@ -618,6 +628,7 @@ export function MainApp() {
               )}
 
               {isGraphView ? (
+<<<<<<< HEAD
                 <GraphView
                   onSelectNote={(path) => {
                     handleSelectNote(path);
@@ -625,6 +636,12 @@ export function MainApp() {
                   }}
                   refreshTrigger={graphRefreshTrigger}
                 />
+=======
+                <GraphView onSelectNote={(path) => {
+                  handleSelectNote(path);
+                  setIsGraphView(false);
+                }} />
+>>>>>>> origin/004-OpenAI
               ) : (
                 isLoadingNote ? (
                   <NoteViewerSkeleton />
