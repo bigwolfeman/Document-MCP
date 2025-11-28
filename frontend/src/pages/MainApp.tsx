@@ -579,16 +579,6 @@ export function MainApp() {
 
       {/* Main content */}
       <div className="flex-1 overflow-hidden animate-fade-in" style={{ animationDelay: '0.1s' }}>
-        {isDemoMode && (
-          <div className="border-b border-border bg-muted/40 px-4 py-2 text-sm text-muted-foreground flex flex-wrap items-center justify-between gap-2">
-            <span>
-              You are browsing the shared demo vault in read-only mode. Sign in with your Hugging Face account to create and edit notes.
-            </span>
-            <Button variant="outline" size="sm" onClick={() => login()}>
-              Sign in
-            </Button>
-          </div>
-        )}
         <ResizablePanelGroup direction="horizontal">
           {/* Left sidebar */}
           <ResizablePanel defaultSize={25} minSize={15} maxSize={40}>
