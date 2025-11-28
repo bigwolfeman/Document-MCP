@@ -486,6 +486,8 @@ ALWAYS:
         """Convert LlamaIndex response to ChatResponse."""
         sources = []
         notes_written = []
+
+        logger.info(f"[RAG] Formatting response, has sources: {hasattr(response, 'sources')}")
         
         # Handle source nodes (RAG retrieval)
         if hasattr(response, "source_nodes"):
@@ -501,14 +503,24 @@ ALWAYS:
         
         # Handle tool outputs (Agent actions)
         if hasattr(response, "sources"):
+            logger.info(f"[RAG] Processing {len(response.sources)} tool outputs")
             for tool_output in response.sources:
+                logger.info(f"[RAG] Tool: {tool_output.tool_name}")
                 if tool_output.tool_name == "create_note":
                     args = tool_output.raw_input
                     if args and "title" in args:
                         notes_written.append(NoteWritten(
-                            path=f"agent-notes/{args['title']}.md", 
+                            path=f"agent-notes/{args['title']}.md",
                             title=args["title"],
                             action="created"
+                        ))
+                elif tool_output.tool_name == "update_note":
+                    args = tool_output.raw_input
+                    if args and "path" in args:
+                        notes_written.append(NoteWritten(
+                            path=args["path"],
+                            title=os.path.basename(args["path"]).replace(".md", ""),
+                            action="updated"
                         ))
                 elif tool_output.tool_name == "move_note":
                     args = tool_output.raw_input
@@ -521,6 +533,7 @@ ALWAYS:
                 elif tool_output.tool_name == "create_folder":
                     pass
 
+        logger.info(f"[RAG] Response formatted: {len(sources)} sources, {len(notes_written)} notes_written")
         return ChatResponse(
             answer=str(response),
             sources=sources,

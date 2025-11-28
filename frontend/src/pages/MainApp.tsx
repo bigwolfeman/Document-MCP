@@ -190,8 +190,12 @@ export function MainApp() {
   // Refresh all views when notes are changed
   const refreshAll = async () => {
     try {
-      // Rebuild index first (don't wait for it to complete)
-      rebuildIndex().catch(() => null);
+      // IMPORTANT: Wait for index rebuild to complete before fetching data
+      // The graph view depends on the index being up-to-date!
+      await rebuildIndex().catch((err) => {
+        console.error('Index rebuild failed:', err);
+        // Continue even if rebuild fails
+      });
 
       // Then refresh notes list and index health
       const [notesList, health] = await Promise.all([
