@@ -2,8 +2,12 @@
 
 import logging
 import os
+import threading
 from pathlib import Path
 from typing import Optional, List
+
+# Configure logger first so it can be used in try/except
+logger = logging.getLogger(__name__)
 
 from llama_index.core import (
     VectorStoreIndex,
@@ -14,6 +18,7 @@ from llama_index.core import (
     Settings
 )
 
+# Try to import Gemini, handle missing dependency gracefully
 try:
     from llama_index.llms.google_genai import Gemini
     from llama_index.embeddings.google_genai import GeminiEmbedding
@@ -29,15 +34,29 @@ from .config import get_config
 from .vault import VaultService
 from ..models.rag import ChatMessage, ChatResponse, SourceReference, StatusResponse
 
-logger = logging.getLogger(__name__)
-
 class RAGIndexService:
     """Service for managing LlamaIndex vector stores."""
+    
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super(RAGIndexService, cls).__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
 
     def __init__(self):
+        if getattr(self, "_initialized", False):
+            return
+            
         self.vault_service = VaultService()
         self.config = get_config()
+        self._index_lock = threading.Lock() # Per-instance lock for index ops
         self._setup_gemini()
+        self._initialized = True
 
     def _setup_gemini(self):
         """Configure global LlamaIndex settings for Gemini."""
@@ -71,17 +90,18 @@ class RAGIndexService:
 
     def get_or_build_index(self, user_id: str) -> VectorStoreIndex:
         """Load existing index or build a new one from vault notes."""
-        persist_dir = self.get_persist_dir(user_id)
-        
-        # check if index files exist (docstore.json, index_store.json etc)
-        try:
-            storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
-            index = load_index_from_storage(storage_context)
-            logger.info(f"Loaded existing index for user {user_id}")
-            return index
-        except Exception:
-            logger.info(f"No valid index found for {user_id}, building new one...")
-            return self.build_index(user_id)
+        with self._index_lock:
+            persist_dir = self.get_persist_dir(user_id)
+            
+            # check if index files exist (docstore.json, index_store.json etc)
+            try:
+                storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
+                index = load_index_from_storage(storage_context)
+                logger.info(f"Loaded existing index for user {user_id}")
+                return index
+            except Exception:
+                logger.info(f"No valid index found for {user_id}, building new one...")
+                return self.build_index(user_id)
 
     def build_index(self, user_id: str) -> VectorStoreIndex:
         """Build a new index from the user's vault."""
@@ -90,6 +110,15 @@ class RAGIndexService:
 
         # Read notes from VaultService
         notes = self.vault_service.list_notes(user_id)
+        if not notes:
+            # Handle empty vault (Fix #8)
+            logger.info(f"No notes found for {user_id}, creating empty index")
+            index = VectorStoreIndex.from_documents([])
+            # Persist empty index to avoid rebuilding every time?
+            # LlamaIndex might not persist empty index well.
+            # Let's just return it.
+            return index
+
         documents = []
         
         for note_summary in notes:
@@ -131,10 +160,25 @@ class RAGIndexService:
         persist_dir = self.get_persist_dir(user_id)
         doc_store_path = os.path.join(persist_dir, "docstore.json")
         
-        if os.path.exists(doc_store_path):
-            return StatusResponse(status="ready", doc_count=0, last_updated=None)
+        doc_count = 0
+        status = "building"
         
-        return StatusResponse(status="building", doc_count=0, last_updated=None)
+        if os.path.exists(doc_store_path):
+            status = "ready"
+            try:
+                # Simple line count or file size check to avoid loading whole JSON
+                # Actually, docstore.json is a dict.
+                # Let's just load it if it's small, or stat it.
+                # For MVP, just checking existence is "ready".
+                # To get count, we can try loading keys.
+                import json
+                with open(doc_store_path, 'r') as f:
+                    data = json.load(f)
+                    doc_count = len(data.get("docstore/data", {}))
+            except Exception:
+                logger.warning(f"Failed to read docstore for status: {doc_store_path}")
+                
+        return StatusResponse(status=status, doc_count=doc_count, last_updated=None)
 
     def chat(self, user_id: str, messages: List[ChatMessage]) -> ChatResponse:
         """Run RAG chat query with history."""

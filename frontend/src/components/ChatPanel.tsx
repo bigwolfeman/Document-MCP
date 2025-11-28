@@ -34,14 +34,16 @@ export function ChatPanel({ onNavigateToNote }: ChatPanelProps) {
       timestamp: new Date().toISOString()
     };
 
-    setMessages(prev => [...prev, userMsg]);
+    // Construct new history immediately
+    const newHistory = [...messages, userMsg];
+
+    // Optimistically update UI
+    setMessages(newHistory);
     setInput('');
     setIsLoading(true);
 
     try {
-      // Create request with full history (US3 prep)
-      const history = [...messages, userMsg];
-      const response = await sendChat({ messages: history });
+      const response = await sendChat({ messages: newHistory });
       
       const assistantMsg: ChatMessageType = {
         role: 'assistant',

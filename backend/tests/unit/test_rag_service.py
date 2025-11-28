@@ -82,10 +82,10 @@ def test_get_status(mock_exists, rag_service):
 def test_chat(mock_storage, mock_load, rag_service):
     user_id = "test-user"
     
-    # Mock Index and QueryEngine
+    # Mock Index and ChatEngine
     mock_index = MagicMock()
-    mock_query_engine = MagicMock()
-    mock_index.as_query_engine.return_value = mock_query_engine
+    mock_chat_engine = MagicMock()
+    mock_index.as_chat_engine.return_value = mock_chat_engine
     mock_load.return_value = mock_index
     
     # Mock Response
@@ -99,7 +99,7 @@ def test_chat(mock_storage, mock_load, rag_service):
     mock_node.score = 0.9
     mock_response.source_nodes = [mock_node]
     
-    mock_query_engine.query.return_value = mock_response
+    mock_chat_engine.chat.return_value = mock_response
     
     from backend.src.models.rag import ChatMessage
     messages = [ChatMessage(role="user", content="Question")]
@@ -109,4 +109,4 @@ def test_chat(mock_storage, mock_load, rag_service):
     assert response.answer == "AI Answer"
     assert len(response.sources) == 1
     assert response.sources[0].path == "note.md"
-    mock_query_engine.query.assert_called_with("Question")
+    mock_chat_engine.chat.assert_called()
