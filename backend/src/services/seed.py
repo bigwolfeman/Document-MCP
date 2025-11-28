@@ -23,17 +23,15 @@ Welcome to the Document Viewer! This is an AI-powered documentation system with 
 
 ## 🌟 New: ChatGPT App Integration
 
-(I let Gemini have fun with this one)
-
 Transform ChatGPT into your personal knowledge assistant. View notes directly in the chat with our new **Interactive Widgets**.
 
 👉 **[[ChatGPT App Integration]]** - Learn how to connect and use the widget.
 
-## 🥷 The Agent Bridge
+## 🤝 The Agent Bridge
 
-Use this vault as a communication bridge between your local coding agents (like Claude Code) and the web-based "AI-Kage" (ChatGPT).
+Use this vault as a shared memory substrate between your local coding agents and web-based reasoning models.
 
-👉 **[[Agent Bridge Workflow]]** - The Hidden Agent technique.
+👉 **[[Agent Bridge Workflow]]** - Workflow for multi-agent collaboration.
 
 ## Key Features
 
@@ -59,35 +57,33 @@ Use this vault as a communication bridge between your local coding agents (like 
     {
         "path": "Agent Bridge Workflow.md",
         "title": "Agent Bridge Workflow",
-        "tags": ["agents", "workflow", "hidden-leaf"],
+        "tags": ["agents", "workflow", "architecture"],
         "body": """# The Agent Bridge Workflow
-
-*Available to the Agents Hidden in the Codebase.*
 
 This vault is designed to act as a **shared memory substrate** between specialized AI agents operating in different environments.
 
-## The Cast
+## The Concept
 
-*   **The Hidden Agent (Claude Code / Local)**: Operates deep in the terminal mines. It writes code, runs tests, and pushes commits. It has direct access to the filesystem but lacks the "Big Picture" vision of the web.
-*   **The AI-Kage (ChatGPT / Web)**: Sits in the high tower (browser). It cannot run `ls` or `gcc`, but it has access to the entire vault via the **Document-MCP** connector. It plans strategy, reviews architecture, and updates the mission parameters.
+*   **Execution Agent (Local)**: Tools like **Claude Code** or **OpenDevin** running in your terminal. They have direct access to the filesystem, git, and compilers, but often lack high-level context or "reasoning" capacity for large-scale architecture.
+*   **Planning Agent (Web)**: Models like **ChatGPT (o1/4o)** running in the browser. They have superior reasoning and planning capabilities but cannot touch your code directly.
 
-## The Jutsu (Workflow)
+## The Workflow
 
 1.  **Mission Assignment**:
-    *   The **AI-Kage** writes a new note: `[[Mission: Refactor Auth]]`. It outlines the high-level goals and architectural constraints.
+    *   The **Planning Agent** writes a new note: `[[Mission: Refactor Auth]]`. It outlines the high-level goals, architectural constraints, and success criteria.
     
 2.  **Execution**:
-    *   The **Hidden Agent** (running locally via MCP) reads `[[Mission: Refactor Auth]]`.
-    *   It executes the code changes.
+    *   The **Execution Agent** (connected via local MCP) reads `[[Mission: Refactor Auth]]`.
+    *   It executes the code changes, runs tests, and verifies the implementation.
     *   It writes a progress report: `[[Log: Auth Refactor Status]]`.
 
 3.  **Review**:
-    *   The **AI-Kage** reads the log. It uses the **Graph View** to see how the new `Auth` module connects to existing `User` docs.
-    *   It updates the Mission note with corrections.
+    *   The **Planning Agent** reads the log via the **Document-MCP** connector. It uses the **Graph View** to see how the new `Auth` module connects to existing `User` docs.
+    *   It updates the Mission note with corrections or the next set of tasks.
 
 ## Why this works
 
-By using Markdown files as the universal interface, we decouple the *Planning Intelligence* (ChatGPT o1/4o) from the *Execution Intelligence* (Claude 3.7 Sonnet). The vault becomes the village where they meet.
+By using Markdown files as the universal interface, we decouple the *Planning Intelligence* from the *Execution Intelligence*. The vault becomes the synchronization point, allowing you to leverage the best model for each task without complex direct integrations.
 
 See [[MCP Integration]] to equip your local agents with the tools they need."""
     },
