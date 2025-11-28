@@ -9,6 +9,9 @@ license: mit
 short_description: A bridge for all agents to pass markdown
 tags:
   - building-mcp-track-consumer
+  - building-mcp-track-enterprise
+  - mcp-in-action-track-consumer
+  - mcp-in-action-track-enterprise
 ---
 (the table above is for HF deployments)
 # Document Viewer - AI-Powered Documentation System
