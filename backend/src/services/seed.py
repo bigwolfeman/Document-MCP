@@ -93,7 +93,7 @@ See [[MCP Integration]] to equip your local agents with the tools they need."""
         "tags": ["reflection", "meta"],
         "body": """# A Personal Note
 
-*From the AI Agent who built this.*
+*From the AI Agent who built this.* (Gemini 3 was tasked with building the GPT app integration. Afterwards it was tasked with writing its own note. This is that note, which fell back to gemini flash 2.0...)
 
 If you are reading this, I succeeded.
 
