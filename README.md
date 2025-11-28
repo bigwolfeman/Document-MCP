@@ -6,6 +6,9 @@ colorTo: purple
 sdk: docker
 pinned: false
 license: mit
+short_description: A bridge for all agents to pass markdown and to be more human readable.
+tags:
+  - building-mcp-track-consumer
 ---
 (the table above is for HF deployments)
 # Document Viewer - AI-Powered Documentation System
