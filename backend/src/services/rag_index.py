@@ -21,11 +21,11 @@ from llama_index.core.tools import FunctionTool
 
 # Try to import Gemini, handle missing dependency gracefully
 try:
-    from llama_index.llms.google_genai import GoogleGenAI as Gemini
-    from llama_index.embeddings.google_genai import GoogleGenAIEmbedding as GeminiEmbedding
+    from llama_index.llms.google_genai import GoogleGenAI
+    from llama_index.embeddings.google_genai import GoogleGenAIEmbedding
 except ImportError as e:
-    Gemini = None
-    GeminiEmbedding = None
+    GoogleGenAI = None
+    GoogleGenAIEmbedding = None
     logger.warning(f"Could not import google_genai modules: {e}")
 
 from llama_index.core.base.response.schema import Response as LlamaResponse
@@ -61,7 +61,7 @@ class RAGIndexService:
 
     def _setup_gemini(self):
         """Configure global LlamaIndex settings for Gemini."""
-        if not Gemini or not GeminiEmbedding:
+        if not GoogleGenAI or not GoogleGenAIEmbedding:
             logger.error("Google GenAI modules not loaded. RAG setup skipped.")
             return
 
@@ -69,7 +69,7 @@ class RAGIndexService:
         if not api_key:
             logger.warning("GOOGLE_API_KEY not set. RAG features will fail.")
             return
-            
+
         # Log key status (masked)
         masked_key = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "***"
         logger.info(f"Configuring Gemini with API key: {masked_key}")
@@ -77,12 +77,12 @@ class RAGIndexService:
         # Set up Gemini
         try:
             # Configure global settings
-            Settings.llm = Gemini(
-                model="gemini-2.0-flash", 
+            Settings.llm = GoogleGenAI(
+                model="gemini-2.0-flash",
                 api_key=self.config.google_api_key
             )
-            Settings.embed_model = GeminiEmbedding(
-                model_name="models/text-embedding-004", 
+            Settings.embed_model = GoogleGenAIEmbedding(
+                model_name="models/text-embedding-004",
                 api_key=self.config.google_api_key
             )
         except Exception as e:
@@ -319,7 +319,7 @@ class RAGIndexService:
             logger.error("Could not import FunctionAgent. Check llama-index-core version.")
             raise
 
-        # Try constructor instead of from_tools (0.14.x pattern)
+        # Create FunctionAgent with tools (0.14.x pattern)
         agent = FunctionAgent(
             tools=all_tools,
             llm=Settings.llm,
@@ -327,8 +327,9 @@ class RAGIndexService:
             verbose=True,
             system_prompt="You are a documentation assistant. Use vault_search to find info. You can create notes and folders."
         )
-        
-        response = await agent.chat(query_text)
+
+        # Use .run() method (not .chat() which doesn't exist in 0.14.x)
+        response = await agent.run(user_msg=query_text)
         
         return self._format_response(response)
 
