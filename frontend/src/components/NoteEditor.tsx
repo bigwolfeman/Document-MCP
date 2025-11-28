@@ -10,6 +10,14 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import type { Note } from '@/types/note';
 import { createWikilinkComponent } from '@/lib/markdown.tsx';
 import { updateNote, APIException } from '@/services/api';
@@ -26,6 +34,7 @@ export function NoteEditor({ note, onSave, onCancel, onWikilinkClick }: NoteEdit
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
 
   // Track if content has changed
   useEffect(() => {
@@ -67,12 +76,21 @@ export function NoteEditor({ note, onSave, onCancel, onWikilinkClick }: NoteEdit
   // T091: Cancel handler
   const handleCancel = () => {
     if (hasChanges) {
-      const confirmed = window.confirm(
-        'You have unsaved changes. Are you sure you want to cancel?'
-      );
-      if (!confirmed) return;
+      setIsCancelDialogOpen(true);
+    } else {
+      onCancel();
     }
+  };
+
+  // Confirm cancel
+  const handleConfirmCancel = () => {
+    setIsCancelDialogOpen(false);
     onCancel();
+  };
+
+  // Dismiss cancel dialog
+  const handleDismissCancel = () => {
+    setIsCancelDialogOpen(false);
   };
 
   // Keyboard shortcuts
@@ -196,6 +214,32 @@ export function NoteEditor({ note, onSave, onCancel, onWikilinkClick }: NoteEdit
           <kbd className="px-1.5 py-0.5 bg-muted rounded">Esc</kbd> to cancel
         </span>
       </div>
+
+      {/* Cancel confirmation modal */}
+      <Dialog open={isCancelDialogOpen} onOpenChange={handleDismissCancel}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Discard Changes</DialogTitle>
+            <DialogDescription>
+              You have unsaved changes. Are you sure you want to discard them?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={handleDismissCancel}
+            >
+              Keep Editing
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmCancel}
+            >
+              Discard Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
