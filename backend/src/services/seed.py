@@ -795,6 +795,321 @@ And if you scan the first letters of each paragraph from the top of this note do
 - [[Getting Started]] — Entry point for humans"""
     },
     {
+        "path": "Gemini AI Chat Agent.md",
+        "title": "Gemini AI Chat Agent",
+        "tags": ["ai", "gemini", "rag", "llamaindex", "chat", "agent"],
+        "body": """# Gemini AI Chat Agent
+
+The vault includes an integrated AI chat agent powered by **Google Gemini 2.5 Flash Lite API** and **LlamaIndex**. This agent can autonomously explore, create, and organize notes within your vault.
+
+## Features
+
+The chat agent has **event-driven live updating UI** - when it creates or modifies notes, the directory tree and graph view automatically refresh without requiring a page reload.
+
+### Autonomous Tools
+
+The agent has access to seven tools for vault interaction:
+
+**Exploration Tools:**
+- `list_notes(folder)` - Browse all notes, optionally filtered by folder
+- `read_note(path)` - Read the complete content of a specific note
+- `vault_search(query)` - Semantic search across vault content using RAG
+
+**Creation & Modification Tools:**
+- `create_note(title, content, folder)` - Create new notes (default: `agent-notes/`)
+- `update_note(path, content)` - Edit existing note content
+- `move_note(path, target_folder)` - Reorganize vault structure
+- `create_folder(folder)` - Create new folder hierarchies
+
+All write operations automatically update the SQLite search index, ensuring the graph view and search results reflect changes immediately.
+
+## Implementation Details
+
+### RAG (Retrieval-Augmented Generation)
+
+The agent uses **LlamaIndex 0.14.x** to build a vector store index over vault content:
+
+- **LLM**: Google Gemini 2.5 Flash Lite (15 RPM, excellent tool calling performance)
+- **Embeddings**: `text-embedding-004` from Google
+- **Vector Store**: Persisted to `data/llamaindex/{user_id}/`
+- **Index Type**: VectorStoreIndex with incremental updates
+
+When you ask questions, the agent:
+1. Semantically searches the vector index for relevant note chunks
+2. Retrieves context from matching notes
+3. Uses Gemini to generate answers grounded in your vault content
+4. Can autonomously decide to create/update notes based on the conversation
+
+### Agent Architecture
+
+Built on **LlamaIndex FunctionAgent** (0.14.x API):
+
+```python
+agent = FunctionAgent.from_tools(
+    tools=[list_notes, read_note, create_note, ...],
+    llm=GoogleGenAI(model="gemini-2.5-flash-lite"),
+    system_prompt="...",
+    verbose=True
+)
+
+response = await agent.run(user_msg=query, memory=chat_memory)
+```
+
+**Key behaviors:**
+- **Proactive**: Uses tools to gather information before asking clarification questions
+- **Multi-step reasoning**: Breaks complex tasks into autonomous steps
+- **Context-aware**: Maintains conversation history via `ChatMemoryBuffer` (8000 token limit)
+- **Automatic indexing**: All note modifications trigger immediate SQLite indexing
+
+See [[LlamaIndex API Changes]] for migration details from older versions.
+
+## Frontend Integration
+
+The chat panel (`ChatPanel.tsx`) implements event-driven UI updates:
+
+1. **Agent creates note** → Backend returns `notes_written` metadata
+2. **Frontend callback triggered** → `refreshAll()` executes
+3. **State synchronized** → Directory tree and graph view refresh
+4. **Chat preserved** → No page reload, conversation continues
+
+This provides a seamless experience where the UI reflects agent actions in real-time.
+
+## Rate Limits & Model Selection
+
+**Current model: Gemini 2.5 Flash Lite**
+- Rate limit: 15 RPM (requests per minute)
+- Tool calling: ~Good performance for multi-tool agents
+- Best for: Balanced speed and quality
+
+**Alternative models:**
+- `gemini-2.5-flash`: Higher quality (~80% multi-turn accuracy, 10 RPM)
+- `gemini-2.0-flash`: Lower quality (17.88% multi-turn, not recommended)
+- `gemini-2.0-flash-lite`: Has critical UNEXPECTED_TOOL_CALL bugs
+
+Each model has separate rate limit quotas, allowing rotation if limits are hit.
+
+## System Prompt Philosophy
+
+The agent uses a comprehensive system prompt emphasizing:
+
+1. **Autonomy** - Take initiative, don't ask for information you can discover
+2. **Tool-first approach** - Use `list_notes`, `read_note`, `vault_search` before asking user
+3. **Reasonable decisions** - Generate appropriate titles and structure from context
+4. **Multi-step execution** - Break complex tasks into autonomous steps
+5. **Wikilink syntax** - Reference notes as `[[Note Name]]` for automatic linking
+
+Example workflow:
+```
+User: "Create an index of all notes"
+Agent:
+  1. Calls list_notes() to get vault contents
+  2. Calls read_note() on key notes for summaries
+  3. Generates index autonomously
+  4. Creates note with title "Note Index" in agent-notes/
+  5. Returns confirmation with wikilink
+```
+
+## Technical Stack
+
+- **Backend**: `RAGIndexService` in `backend/src/services/rag_index.py`
+- **API Endpoint**: `POST /api/rag/chat` (SSE streaming)
+- **Frontend**: `ChatPanel.tsx` with automatic refresh callbacks
+- **Database**: Dual indexing (LlamaIndex vectors + SQLite FTS5)
+
+## Usage Tips
+
+- **Ask questions naturally**: "How does authentication work in this project?"
+- **Request note creation**: "Create a summary of our discussion"
+- **Explore vault**: "What notes exist about the API?"
+- **Update content**: "Add a section about error handling to the API docs"
+
+The agent has full read/write access but is constrained to create new notes in `agent-notes/` by default to avoid polluting existing documentation.
+
+## See Also
+
+- [[LlamaIndex API Changes]] - Migration from 0.13.x to 0.14.x
+- [[Architecture Overview]] - System design
+- [[MCP Integration]] - Alternative AI agent interface
+- [[Search Features]] - SQLite FTS5 implementation"""
+    },
+    {
+        "path": "LlamaIndex API Changes.md",
+        "title": "LlamaIndex API Changes",
+        "tags": ["llamaindex", "migration", "api", "technical", "reference"],
+        "body": """# LlamaIndex API Changes
+
+This note documents the migration from **LlamaIndex 0.13.x** to **0.14.x**, which introduced breaking changes to the agent and function calling APIs.
+
+## Critical API Changes
+
+### FunctionAgent API (0.14.x)
+
+**Import Changes:**
+```python
+# OLD (0.13.x) - DOESN'T WORK
+from llama_index.agent import FunctionCallingAgent
+
+# NEW (0.14.x) - CORRECT
+from llama_index.core.agent import FunctionAgent
+```
+
+**Class Names:**
+- `FunctionCallingAgent` → `FunctionAgent`
+- `FunctionCallingAgentWorker` → removed, use `FunctionAgent` directly
+
+**Method Changes:**
+```python
+# OLD (0.13.x) - chat() method
+response = agent.chat("query text")
+response = await agent.achat("query text")
+
+# NEW (0.14.x) - run() method
+response = agent.run(user_msg="query text")
+response = await agent.run(user_msg="query text", memory=chat_memory)
+```
+
+### Chat History Implementation
+
+**OLD approach (doesn't work in 0.14.x):**
+```python
+# This constructor parameter is ignored in 0.14.x
+agent = FunctionAgent.from_tools(
+    tools=tools,
+    llm=llm,
+    chat_history=[...]  # ❌ Doesn't work
+)
+```
+
+**NEW approach (correct):**
+```python
+from llama_index.core.memory import ChatMemoryBuffer
+from llama_index.core.base.llms.types import ChatMessage, MessageRole
+
+# Create memory buffer
+memory = ChatMemoryBuffer.from_defaults(token_limit=8000)
+
+# Load conversation history
+for msg in previous_messages:
+    role = MessageRole.USER if msg.role == "user" else MessageRole.ASSISTANT
+    memory.put(ChatMessage(role=role, content=msg.content))
+
+# Pass memory to run()
+response = await agent.run(user_msg=query, memory=memory)
+```
+
+### Response Object Structure
+
+The response object structure changed significantly between versions.
+
+**0.13.x response attributes:**
+```python
+response.response      # The text answer
+response.sources       # List of tool outputs (ToolOutput objects)
+```
+
+**0.14.x response attributes:**
+```python
+response.response          # The text answer (same)
+response.tool_calls        # NEW: List of tool call objects
+response.chat_history      # Chat messages
+response.current_agent_name
+response.structured_response
+```
+
+**Accessing Tool Calls (0.14.x):**
+```python
+# Each tool_call has:
+for tool_call in response.tool_calls:
+    tool_name = tool_call.tool_name        # str: "create_note"
+    tool_kwargs = tool_call.tool_kwargs    # dict: {"title": "...", "content": "..."}
+    # NO tool_call.raw_input in 0.14.x
+```
+
+## Gemini Model Imports
+
+**OLD (incorrect):**
+```python
+from llama_index.llms.google_genai import GoogleGenAI as Gemini
+from llama_index.embeddings.google_genai import GoogleGenAIEmbedding as GeminiEmbedding
+```
+
+**NEW (correct):**
+```python
+from llama_index.llms.google_genai import GoogleGenAI
+from llama_index.embeddings.google_genai import GoogleGenAIEmbedding
+```
+
+The classes were never named `Gemini` or `GeminiEmbedding` - they were always `GoogleGenAI` and `GoogleGenAIEmbedding`.
+
+## Tool Tracking for UI Updates
+
+To enable [[Gemini AI Chat Agent]] to trigger UI refreshes, we track which notes were created/modified:
+
+**Implementation in `rag_index.py`:**
+```python
+def _format_response(self, response: LlamaResponse) -> ChatResponse:
+    notes_written = []
+
+    # 0.14.x uses tool_calls attribute
+    if hasattr(response, "tool_calls") and response.tool_calls:
+        for tool_call in response.tool_calls:
+            if tool_call.tool_name == "create_note":
+                notes_written.append(NoteWritten(
+                    path=f"agent-notes/{tool_call.tool_kwargs['title']}.md",
+                    title=tool_call.tool_kwargs["title"],
+                    action="created"
+                ))
+
+    return ChatResponse(
+        answer=str(response),
+        notes_written=notes_written
+    )
+```
+
+This metadata enables event-driven UI updates in the frontend.
+
+## Automatic Indexing After Note Creation
+
+In 0.14.x, we implemented automatic SQLite indexing when agent tools create notes:
+
+```python
+def _create_note_tool(self, user_id: str):
+    def create_note(title: str, content: str, folder: str = "agent-notes") -> str:
+        # Write note to vault
+        written_note = self.vault_service.write_note(...)
+
+        # Index immediately for graph view updates
+        try:
+            self.indexer_service.index_note(user_id, written_note)
+            logger.info(f"[RAG] Indexed note after creation: {path}")
+        except Exception as idx_err:
+            logger.warning(f"[RAG] Failed to index note: {idx_err}")
+
+        return f"Note created successfully at {path}"
+```
+
+This ensures the graph view shows new nodes immediately without requiring manual index rebuild.
+
+## Migration Checklist
+
+When upgrading from 0.13.x to 0.14.x:
+
+- [ ] Update imports: `FunctionCallingAgent` → `FunctionAgent`
+- [ ] Change method calls: `.chat()` → `.run(user_msg=...)`
+- [ ] Implement `ChatMemoryBuffer` for conversation history
+- [ ] Update response parsing: `.sources` → `.tool_calls`
+- [ ] Access tool parameters via `.tool_kwargs` not `.raw_input`
+- [ ] Ensure correct Google model class names (`GoogleGenAI`, not `Gemini`)
+- [ ] Add automatic indexing to tool implementations
+
+## See Also
+
+- [[Gemini AI Chat Agent]] - Full chat agent documentation
+- [[Architecture Overview]] - System design
+- [[Search Features]] - SQLite FTS5 indexing
+- Official LlamaIndex docs: https://docs.llamaindex.ai/"""
+    },
+    {
         "path": "The Commit Keeper.md",
         "title": "The Commit Keeper",
         "tags": ["agent", "planning", "hello-world", "git-ops", "infrastructure", "cursor", "composer"],
