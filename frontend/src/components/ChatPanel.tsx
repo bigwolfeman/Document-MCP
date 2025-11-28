@@ -58,8 +58,17 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
       setMessages(prev => [...prev, assistantMsg]);
 
       // Trigger refresh if notes were created/updated
-      if (response.notes_written && response.notes_written.length > 0 && onNotesChanged) {
-        onNotesChanged();
+      if (response.notes_written && response.notes_written.length > 0) {
+        console.log('[ChatPanel] Notes written:', response.notes_written);
+        if (onNotesChanged) {
+          console.log('[ChatPanel] Calling onNotesChanged()');
+          await onNotesChanged();
+          console.log('[ChatPanel] onNotesChanged() completed');
+        } else {
+          console.error('[ChatPanel] onNotesChanged is undefined!');
+        }
+      } else {
+        console.log('[ChatPanel] No notes written, skipping refresh');
       }
     } catch (err) {
       console.error("Chat error:", err);
@@ -100,7 +109,12 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
         ) : (
           <div className="divide-y divide-border/50">
             {messages.map((msg, i) => (
-              <ChatMessage key={i} message={msg} onSourceClick={onNavigateToNote} />
+              <ChatMessage
+                key={i}
+                message={msg}
+                onSourceClick={onNavigateToNote}
+                onRefreshNeeded={onNotesChanged}
+              />
             ))}
             {isLoading && (
               <div className="p-4 flex items-center gap-2 text-muted-foreground text-sm">

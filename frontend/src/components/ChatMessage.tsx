@@ -3,7 +3,6 @@ import { cn } from '@/lib/utils';
 import { User, Bot, FilePlus, Edit, RefreshCw } from 'lucide-react';
 import { SourceList } from './SourceList';
 import { Button } from './ui/button';
-import { rebuildIndex } from '@/services/api';
 import { useState } from 'react';
 
 interface ChatMessageProps {
@@ -19,16 +18,17 @@ export function ChatMessage({ message, onSourceClick, onRefreshNeeded }: ChatMes
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      // Rebuild index to update graph view and search
-      await rebuildIndex();
-      // Notify parent to refresh notes list
+      console.log('[ChatMessage] Manual refresh triggered');
+      // Trigger the same refresh mechanism as automatic refresh
       if (onRefreshNeeded) {
-        onRefreshNeeded();
+        await onRefreshNeeded();
+        console.log('[ChatMessage] Refresh completed');
+      } else {
+        console.error('[ChatMessage] onRefreshNeeded is undefined');
       }
-      // Force page reload to refresh all views
-      window.location.reload();
     } catch (err) {
-      console.error('Refresh failed:', err);
+      console.error('[ChatMessage] Refresh failed:', err);
+    } finally {
       setIsRefreshing(false);
     }
   };

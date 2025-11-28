@@ -25,7 +25,6 @@ import {
   getIndexHealth,
   createNote,
   moveNote,
-  rebuildIndex,
   type BacklinkResult,
   APIException,
 } from '@/services/api';
@@ -189,24 +188,27 @@ export function MainApp() {
 
   // Refresh all views when notes are changed
   const refreshAll = async () => {
+    console.log('[MainApp] refreshAll called');
     try {
-      // IMPORTANT: Wait for index rebuild to complete before fetching data
-      // The graph view depends on the index being up-to-date!
-      await rebuildIndex().catch((err) => {
-        console.error('Index rebuild failed:', err);
-        // Continue even if rebuild fails
-      });
+      // Note: Backend automatically updates index when notes are created
+      // We just need to fetch the fresh data
 
-      // Then refresh notes list and index health
+      // Small delay to ensure backend indexing completes
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Fetch fresh data
       const [notesList, health] = await Promise.all([
         listNotes(),
         getIndexHealth().catch(() => null)
       ]);
+
+      console.log('[MainApp] Fetched', notesList.length, 'notes');
       setNotes(notesList);
       setIndexHealth(health);
       setGraphRefreshTrigger(prev => prev + 1);  // Trigger graph refresh
+      console.log('[MainApp] State updated, graph trigger incremented');
     } catch (err) {
-      console.error('Error refreshing data:', err);
+      console.error('[MainApp] Error refreshing data:', err);
     }
   };
 
