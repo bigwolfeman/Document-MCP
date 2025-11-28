@@ -7,7 +7,7 @@ sdk: docker
 pinned: false
 license: mit
 ---
-
+(the table above is for HF deployments)
 # Document Viewer - AI-Powered Documentation System
 
 An Obsidian-style documentation system where AI agents and humans collaborate on creating and maintaining documentation.
