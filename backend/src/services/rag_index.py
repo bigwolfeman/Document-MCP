@@ -310,13 +310,14 @@ class RAGIndexService:
         
         all_tools = tools + [query_tool]
         
-        from llama_index.core.agent import ReActAgent
-        agent = ReActAgent.from_tools(
+        # Use FunctionCallingAgent for Gemini (native tool support)
+        from llama_index.core.agent import FunctionCallingAgent
+        agent = FunctionCallingAgent.from_tools(
             all_tools, 
             llm=Settings.llm, 
             chat_history=history,
             verbose=True,
-            context="You are a documentation assistant. Use vault_search to find info. You can create notes and folders."
+            system_prompt="You are a documentation assistant. Use vault_search to find info. You can create notes and folders."
         )
         
         response = await agent.achat(query_text)
