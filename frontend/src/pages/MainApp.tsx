@@ -774,7 +774,7 @@ export function MainApp() {
           {isChatOpen && (
             <>
               <ResizableHandle withHandle />
-              <ResizablePanel defaultSize={25} minSize={20} maxSize={40}>
+              <ResizablePanel defaultSize={25} minSize={20} maxSize={40} className="animate-slide-in">
                 <ChatPanel
                   onNavigateToNote={handleSelectNote}
                   onNotesChanged={refreshAll}
