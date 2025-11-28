@@ -7,14 +7,14 @@ sdk: docker
 pinned: false
 license: mit
 ---
-
+(the table above is for HF deployments)
 # Document Viewer - AI-Powered Documentation System
 
 An Obsidian-style documentation system where AI agents and humans collaborate on creating and maintaining documentation.
 
 ## ⚠️ Demo Mode
 
-**This is a demonstration instance with ephemeral storage.**
+**This is a demonstration instance hosted on HuggingFace with ephemeral storage.**
 
 - All data is temporary and resets on server restart
 - Demo content is automatically seeded on each startup
