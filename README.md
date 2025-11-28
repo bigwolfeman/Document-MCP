@@ -18,6 +18,8 @@ tags:
 
 An Obsidian-style documentation system where AI agents and humans collaborate on creating and maintaining documentation.
 
+Team members: Bigwolfe, AbelFace, 
+
 ## ⚠️ Demo Mode
 
 **This is a demonstration instance hosted on HuggingFace with ephemeral storage.**
