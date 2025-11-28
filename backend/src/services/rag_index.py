@@ -64,9 +64,14 @@ class RAGIndexService:
             logger.error("Google GenAI modules not loaded. RAG setup skipped.")
             return
 
-        if not self.config.google_api_key:
+        api_key = self.config.google_api_key
+        if not api_key:
             logger.warning("GOOGLE_API_KEY not set. RAG features will fail.")
             return
+            
+        # Log key status (masked)
+        masked_key = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "***"
+        logger.info(f"Configuring Gemini with API key: {masked_key}")
 
         # Set up Gemini
         try:

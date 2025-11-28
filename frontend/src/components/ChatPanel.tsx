@@ -6,6 +6,7 @@ import { ChatMessage } from './ChatMessage';
 import { sendChat } from '@/services/rag';
 import type { ChatMessage as ChatMessageType } from '@/types/rag';
 import { useToast } from '@/hooks/useToast';
+import { APIException } from '@/services/api';
 
 interface ChatPanelProps {
   onNavigateToNote: (path: string) => void;
@@ -54,10 +55,6 @@ export function ChatPanel({ onNavigateToNote }: ChatPanelProps) {
       };
       
       setMessages(prev => [...prev, assistantMsg]);
-import { APIException } from '@/services/api';
-
-// ...
-
     } catch (err) {
       console.error("Chat error:", err);
       let errorMessage = "Failed to get response from agent";
@@ -67,17 +64,10 @@ import { APIException } from '@/services/api';
         errorMessage = err.message;
       }
       toast.error(errorMessage);
-      // Optionally remove user message or show error state
     } finally {
       setIsLoading(false);
     }
   };
-
-// ...
-
-      {/* Input Area */}
-      <div className="p-4 pb-6 border-t border-border">
-        <div className="flex gap-2">
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -117,7 +107,7 @@ import { APIException } from '@/services/api';
       </div>
 
       {/* Input Area */}
-      <div className="p-4 border-t border-border">
+      <div className="p-4 pb-6 border-t border-border">
         <div className="flex gap-2">
           <Textarea
             value={input}
