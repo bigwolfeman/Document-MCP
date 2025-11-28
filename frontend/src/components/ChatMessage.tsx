@@ -1,4 +1,4 @@
-import type { ChatMessage as ChatMessageType, NoteWritten } from '@/types/rag';
+import type { ChatMessage as ChatMessageType } from '@/types/rag';
 import { cn } from '@/lib/utils';
 import { User, Bot, FilePlus, Edit } from 'lucide-react';
 import { SourceList } from './SourceList';
