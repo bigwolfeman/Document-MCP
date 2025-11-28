@@ -328,7 +328,7 @@ class RAGIndexService:
             system_prompt="You are a documentation assistant. Use vault_search to find info. You can create notes and folders."
         )
         
-        response = await agent.achat(query_text)
+        response = await agent.chat(query_text)
         
         return self._format_response(response)
 
