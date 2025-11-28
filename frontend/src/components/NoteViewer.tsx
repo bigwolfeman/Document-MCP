@@ -3,6 +3,7 @@
  * T081-T082: Wikilink click handling and broken link styling
  * T009: Font size buttons (A-, A, A+) for content adjustment
  * T037-T052: Table of Contents panel integration
+ * PARTICLE EFFECT: Soft glowing particles on wikilink clicks
  */
 import { useMemo, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
@@ -26,6 +27,7 @@ import { createWikilinkComponent, resetSlugCache } from '@/lib/markdown.tsx';
 import { markdownToPlainText } from '@/lib/markdownToText';
 import { useTableOfContents } from '@/hooks/useTableOfContents';
 import { TableOfContents } from '@/components/TableOfContents';
+import { GlowParticleEffect } from '@/components/GlowParticleEffect';
 
 type FontSizePreset = 'small' | 'medium' | 'large';
 
@@ -238,7 +240,24 @@ export function NoteViewer({
         {/* Main content panel */}
         <ResizablePanel defaultSize={isTocOpen ? 75 : 100}>
           <ScrollArea className="h-full p-6">
-            <div className="prose prose-slate dark:prose-invert max-w-none animate-fade-in-smooth">
+            {/*
+              PARTICLE EFFECT INTEGRATION
+
+              VISUAL: Wraps the markdown content with a canvas overlay.
+              When users click on wikilinks (.wikilink elements), soft
+              glowing particles spawn at the click location.
+
+              TRIGGER: Only wikilink clicks spawn particles (triggerSelector)
+              STYLE: "elegant" preset - balanced size, moderate glow, ~1 second fade
+
+              The particles float upward and fade out, creating a subtle
+              visual acknowledgment of the navigation action.
+            */}
+            <GlowParticleEffect
+              config="elegant"
+              triggerSelector=".wikilink"
+              className="prose prose-slate dark:prose-invert max-w-none animate-fade-in-smooth"
+            >
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={markdownComponents}
@@ -246,7 +265,7 @@ export function NoteViewer({
               >
                 {processedBody}
               </ReactMarkdown>
-            </div>
+            </GlowParticleEffect>
 
             <Separator className="my-8" />
 
