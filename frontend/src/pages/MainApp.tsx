@@ -538,7 +538,10 @@ export function MainApp() {
       {/* Top bar */}
       <div className="border-b border-border p-4 animate-fade-in">
         <div className="flex items-center justify-between gap-2">
-          <h1 className="text-xl font-semibold">📚 Document Viewer</h1>
+          <div className="flex items-center gap-2">
+            <img src="/vault.png" alt="Vault.MCP" className="w-10 h-10" />
+            <span className="text-sm text-muted-foreground font-mono">v1.0</span>
+          </div>
           <div className="flex gap-2">
             {isDemoMode && (
               <Button
