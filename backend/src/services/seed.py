@@ -38,6 +38,7 @@ Use this vault as a shared memory substrate between your local coding agents and
 - **Wikilinks**: Link between notes using `[[Note Name]]` syntax
 - **Full-Text Search**: Powered by SQLite FTS5 with BM25 ranking
 - **Interactive Graph**: Visualize your vault's connections (Toggle via top-right menu)
+- **Text-to-Speech**: Listen to your notes with ElevenLabs AI voices - see [[Text-to-Speech (TTS)]]
 - **MCP Integration**: AI agents can read and write docs via [[MCP Integration]]
 - **Multi-Tenant**: Each user has an isolated vault
 
@@ -1108,6 +1109,111 @@ When upgrading from 0.13.x to 0.14.x:
 - [[Architecture Overview]] - System design
 - [[Search Features]] - SQLite FTS5 indexing
 - Official LlamaIndex docs: https://docs.llamaindex.ai/"""
+    },
+    {
+        "path": "Text-to-Speech (TTS).md",
+        "title": "Text-to-Speech (TTS)",
+        "tags": ["tts", "elevenlabs", "audio", "accessibility", "features"],
+        "body": """# Text-to-Speech (TTS)
+
+The Document Viewer includes an integrated **Text-to-Speech** feature powered by **ElevenLabs API**, allowing you to listen to your documentation instead of reading it.
+
+## Features
+
+- **High-Quality Voices**: Professional AI voices from ElevenLabs
+- **Note Reading**: Play audio version of any note with a single click
+- **Playback Controls**: Play, pause, and stop functionality
+- **Seamless Integration**: TTS button appears in note viewer toolbar
+
+## Setup (Required for Self-Hosting)
+
+The TTS feature requires two environment variables to be configured:
+
+### 1. Get an ElevenLabs API Key
+
+1. Sign up at https://elevenlabs.io
+2. Navigate to your profile settings
+3. Copy your API key
+4. Set the environment variable: `ELEVENLABS_API_KEY=your-api-key-here`
+
+### 2. Choose a Voice ID
+
+ElevenLabs provides several high-quality pre-made voices. Choose one and set the `ELEVENLABS_VOICE_ID` environment variable.
+
+**Recommended Voice IDs:**
+
+| Voice Name | ID | Description |
+|------------|----|----|
+| **Rachel** (recommended) | `21m00Tcm4TlvDq8ikWAM` | American female, calm and clear |
+| **Adam** | `pNInz6obpgDQGcFmaJgB` | American male, deep and authoritative |
+| **Antoni** | `ErXwobaYiN019PkySvjV` | American male, well-rounded |
+| **Josh** | `TxGEqnHWrfWFTfGW9XjX` | American male, young and energetic |
+| **Bella** | `EXAVITQu4vr4xnSDxMaL` | American female, soft and pleasant |
+| **Elli** | `MF3mGyEYCl7XYWbV9V6O` | American female, emotional and expressive |
+
+**Example `.env` configuration:**
+```bash
+ELEVENLABS_API_KEY=sk_abc123...
+ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM
+```
+
+### 3. For HuggingFace Spaces
+
+If deploying to HuggingFace Spaces:
+
+1. Go to your Space **Settings** → **Variables and secrets**
+2. Add two **secrets**:
+   - **Name:** `ELEVENLABS_API_KEY`, **Value:** your API key
+   - **Name:** `ELEVENLABS_VOICE_ID`, **Value:** `21m00Tcm4TlvDq8ikWAM` (or your chosen voice)
+3. Restart your Space for changes to take effect
+
+## How to Use
+
+1. **Open any note** in the Document Viewer
+2. **Click the speaker icon** in the toolbar (appears next to Edit button)
+3. **Wait for synthesis** - the text is converted to speech (may take a few seconds)
+4. **Audio plays automatically** once ready
+5. **Use controls** to pause, resume, or stop playback
+
+The TTS feature converts markdown to plain text before synthesis, removing formatting characters for natural-sounding speech.
+
+## Technical Details
+
+- **API Endpoint**: `POST /api/tts/synthesize`
+- **Implementation**: `backend/src/api/routes/tts.py`
+- **Frontend**: TTS controls in `NoteViewer.tsx`
+- **Model**: ElevenLabs multilingual v2 model
+- **Format**: MP3 audio stream
+
+The backend strips markdown formatting and converts the content to plain text before sending to ElevenLabs, ensuring the audio sounds natural without reading asterisks, brackets, or other markdown syntax.
+
+## Rate Limits
+
+ElevenLabs free tier provides:
+- 10,000 characters per month
+- Sufficient for occasional documentation reading
+- Upgrade to paid tier for higher limits
+
+## Troubleshooting
+
+**"Voice ID is required" error:**
+- Ensure `ELEVENLABS_VOICE_ID` is set in environment variables
+- Restart the server/Space after adding the variable
+
+**Audio doesn't play:**
+- Check browser console for errors
+- Verify `ELEVENLABS_API_KEY` is valid
+- Ensure your browser supports HTML5 audio
+
+**Poor audio quality:**
+- Try a different voice ID from the list above
+- Check if the note content has unusual characters that might affect synthesis
+
+## See Also
+
+- [[Architecture Overview]] - System design
+- [[Self Hosting]] - Deployment guide
+- [[Getting Started]] - First steps"""
     },
     {
         "path": "The Commit Keeper.md",
