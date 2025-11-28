@@ -185,6 +185,16 @@ export function MainApp() {
     setIsEditMode(false); // Exit edit mode when switching notes
   };
 
+  // Refresh notes list (e.g., after agent creates new notes)
+  const refreshNotesList = async () => {
+    try {
+      const notesList = await listNotes();
+      setNotes(notesList);
+    } catch (err) {
+      console.error('Error refreshing notes list:', err);
+    }
+  };
+
   // T093: Handle edit button click
   const handleEdit = () => {
     if (isDemoMode) {
@@ -630,7 +640,10 @@ export function MainApp() {
             <>
               <ResizableHandle withHandle />
               <ResizablePanel defaultSize={25} minSize={20} maxSize={40}>
-                <ChatPanel onNavigateToNote={handleSelectNote} />
+                <ChatPanel
+                  onNavigateToNote={handleSelectNote}
+                  onNotesChanged={refreshNotesList}
+                />
               </ResizablePanel>
             </>
           )}
