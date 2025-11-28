@@ -20,8 +20,8 @@ from llama_index.core import (
 
 # Try to import Gemini, handle missing dependency gracefully
 try:
-    from llama_index.llms.google_genai import Gemini
-    from llama_index.embeddings.google_genai import GeminiEmbedding
+    from llama_index.llms.google_genai import GoogleGenAI as Gemini
+    from llama_index.embeddings.google_genai import GoogleGenAIEmbedding as GeminiEmbedding
 except ImportError as e:
     Gemini = None
     GeminiEmbedding = None
