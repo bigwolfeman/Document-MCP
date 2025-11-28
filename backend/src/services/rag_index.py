@@ -33,7 +33,7 @@ from llama_index.core.llms import ChatMessage as LlamaChatMessage, MessageRole
 
 from .config import get_config
 from .vault import VaultService
-from ..models.rag import ChatMessage, ChatResponse, SourceReference, StatusResponse
+from ..models.rag import ChatMessage, ChatResponse, SourceReference, StatusResponse, NoteWritten
 
 class RAGIndexService:
     """Service for managing LlamaIndex vector stores."""
@@ -60,22 +60,131 @@ class RAGIndexService:
         self._initialized = True
 
     def _setup_gemini(self):
-        # ... (existing)
+        """Configure global LlamaIndex settings for Gemini."""
+        if not Gemini or not GeminiEmbedding:
+            logger.error("Google GenAI modules not loaded. RAG setup skipped.")
+            return
+
+        api_key = self.config.google_api_key
+        if not api_key:
+            logger.warning("GOOGLE_API_KEY not set. RAG features will fail.")
+            return
+            
+        # Log key status (masked)
+        masked_key = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "***"
+        logger.info(f"Configuring Gemini with API key: {masked_key}")
+
+        # Set up Gemini
+        try:
+            # Configure global settings
+            Settings.llm = Gemini(
+                model="gemini-2.0-flash", 
+                api_key=self.config.google_api_key
+            )
+            Settings.embed_model = GeminiEmbedding(
+                model_name="models/text-embedding-004", 
+                api_key=self.config.google_api_key
+            )
+        except Exception as e:
+            logger.error(f"Failed to setup Gemini: {e}")
 
     def get_persist_dir(self, user_id: str) -> str:
-        # ... (existing)
+        """Get persistence directory for a user's index."""
+        user_dir = self.config.llamaindex_persist_dir / user_id
+        user_dir.mkdir(parents=True, exist_ok=True)
+        return str(user_dir)
 
     def get_or_build_index(self, user_id: str) -> VectorStoreIndex:
-        # ... (existing)
+        """Load existing index or build a new one from vault notes."""
+        with self._index_lock:
+            persist_dir = self.get_persist_dir(user_id)
+            
+            # check if index files exist (docstore.json, index_store.json etc)
+            try:
+                storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
+                index = load_index_from_storage(storage_context)
+                logger.info(f"Loaded existing index for user {user_id}")
+                return index
+            except Exception:
+                logger.info(f"No valid index found for {user_id}, building new one...")
+                return self.build_index(user_id)
 
     def build_index(self, user_id: str) -> VectorStoreIndex:
-        # ... (existing)
+        """Build a new index from the user's vault."""
+        if not self.config.google_api_key:
+            raise ValueError("GOOGLE_API_KEY required to build index")
+
+        # Read notes from VaultService
+        notes = self.vault_service.list_notes(user_id)
+        if not notes:
+            # Handle empty vault (Fix #8)
+            logger.info(f"No notes found for {user_id}, creating empty index")
+            index = VectorStoreIndex.from_documents([])
+            # Persist empty index to avoid rebuilding every time?
+            # LlamaIndex might not persist empty index well.
+            # Let's just return it.
+            return index
+
+        documents = []
+        
+        for note_summary in notes:
+            path = note_summary["path"]
+            try:
+                note = self.vault_service.read_note(user_id, path)
+                # Create Document
+                metadata = {
+                    "path": path,
+                    "title": note["title"],
+                    **note.get("metadata", {})
+                }
+                doc = Document(
+                    text=note["body"],
+                    metadata=metadata,
+                    id_=path # Use path as ID for stability
+                )
+                documents.append(doc)
+            except Exception as e:
+                logger.warning(f"Failed to index note {path}: {e}")
+
+        logger.info(f"Indexing {len(documents)} documents for {user_id}")
+        
+        index = VectorStoreIndex.from_documents(documents)
+        
+        # Persist
+        persist_dir = self.get_persist_dir(user_id)
+        index.storage_context.persist(persist_dir=persist_dir)
+        logger.info(f"Persisted index to {persist_dir}")
+        
+        return index
 
     def rebuild_index(self, user_id: str) -> VectorStoreIndex:
-        # ... (existing)
+        """Force rebuild of index."""
+        return self.build_index(user_id)
 
     def get_status(self, user_id: str) -> StatusResponse:
-        # ... (existing)
+        """Get index status."""
+        persist_dir = self.get_persist_dir(user_id)
+        doc_store_path = os.path.join(persist_dir, "docstore.json")
+        
+        doc_count = 0
+        status = "building"
+        
+        if os.path.exists(doc_store_path):
+            status = "ready"
+            try:
+                # Simple line count or file size check to avoid loading whole JSON
+                # Actually, docstore.json is a dict.
+                # Let's just load it if it's small, or stat it.
+                # For MVP, just checking existence is "ready".
+                # To get count, we can try loading keys.
+                import json
+                with open(doc_store_path, 'r') as f:
+                    data = json.load(f)
+                    doc_count = len(data.get("docstore/data", {}))
+            except Exception:
+                logger.warning(f"Failed to read docstore for status: {doc_store_path}")
+                
+        return StatusResponse(status=status, doc_count=doc_count, last_updated=None)
 
     def _create_note_tool(self, user_id: str):
         """Create a tool for writing new notes."""
@@ -104,10 +213,6 @@ class RAGIndexService:
                     body=content,
                     metadata={"created_by": "gemini-agent"}
                 )
-                # Index the new note immediately so agent knows about it? 
-                # write_note does NOT auto-update the RAG index (it updates FTS5).
-                # We might need to add it to the index.
-                # For now, just return success.
                 return f"Note created successfully at {path}"
             except Exception as e:
                 return f"Failed to create note: {e}"
@@ -124,12 +229,6 @@ class RAGIndexService:
                 path: The current path of the note (e.g. "agent-notes/My Note.md").
                 target_folder: The destination folder (e.g. "agent-notes/archive").
             """
-            # Constraint: Can only move notes created by agent (in agent-notes/)?
-            # Or allow moving anywhere? Spec said "not deleting or editing existing".
-            # Moving is technically deleting + creating.
-            # Let's restrict source to agent-notes/ to be safe?
-            # Or just allow it. "We need one for moving notes into folder".
-            
             if not path.endswith(".md"):
                 path += ".md"
                 
@@ -153,7 +252,6 @@ class RAGIndexService:
             Args:
                 folder: The path of the folder to create (e.g. "agent-notes/archive").
             """
-            # Sanitize path?
             safe_folder = folder.strip("/")
             
             try:
@@ -262,7 +360,7 @@ class RAGIndexService:
                             action="updated"
                         ))
                 elif tool_output.tool_name == "create_folder":
-                    pass # No badge for folders yet
+                    pass
 
         return ChatResponse(
             answer=str(response),
