@@ -319,7 +319,8 @@ class RAGIndexService:
             logger.error("Could not import FunctionAgent. Check llama-index-core version.")
             raise
 
-        agent = FunctionAgent.from_tools(
+        # Try constructor instead of from_tools (0.14.x pattern)
+        agent = FunctionAgent(
             tools=all_tools,
             llm=Settings.llm,
             chat_history=history,
