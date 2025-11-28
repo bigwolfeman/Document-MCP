@@ -57,6 +57,10 @@ DEPLOY_TO_HF.md
 # Documentation
 docs/fastmcp/
 
+# AI notes (personal workspace)
+ai-notes/
+Ai-notes/
+
 # Images (binary files not allowed in HF Spaces)
 *.png
 *.jpg
