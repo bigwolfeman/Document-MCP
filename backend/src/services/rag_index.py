@@ -480,6 +480,9 @@ ALWAYS:
         # Use .run() method with memory for context persistence (0.14.x pattern)
         response = await agent.run(user_msg=query_text, memory=memory)
 
+        logger.info(f"[RAG] Agent returned response type: {type(response)}")
+        logger.info(f"[RAG] Response string: {str(response)[:200]}")
+
         return self._format_response(response)
 
     def _format_response(self, response: LlamaResponse) -> ChatResponse:
@@ -487,7 +490,10 @@ ALWAYS:
         sources = []
         notes_written = []
 
-        logger.info(f"[RAG] Formatting response, has sources: {hasattr(response, 'sources')}")
+        # Debug: log all response attributes
+        response_attrs = [attr for attr in dir(response) if not attr.startswith('_')]
+        logger.info(f"[RAG] Response attributes: {response_attrs}")
+        logger.info(f"[RAG] Response type: {type(response)}")
         
         # Handle source nodes (RAG retrieval)
         if hasattr(response, "source_nodes"):
