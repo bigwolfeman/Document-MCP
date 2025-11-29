@@ -536,10 +536,10 @@ export function MainApp() {
       </Alert>
       
       {/* Top bar */}
-      <div className="border-b border-border p-4 animate-fade-in">
+      <div className="border-b border-border p-2 animate-fade-in">
         <div className="relative flex items-center justify-center">
           <h1
-            className="text-xl tracking-[0.15em] uppercase select-none"
+            className="text-2xl tracking-[0.15em] uppercase select-none"
             style={{
               fontFamily: '"Press Start 2P", monospace',
               fontWeight: 400,
@@ -556,7 +556,8 @@ export function MainApp() {
               `,
               textRendering: "geometricPrecision",
               WebkitFontSmoothing: "none",
-              transform: "skewX(-4deg)",
+              transform: "perspective(700px) rotateX(18deg)",
+              transformOrigin: "bottom center",
             }}
           >
             Vault.MCP
