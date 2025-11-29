@@ -20,7 +20,6 @@ import { ChatPanel } from '@/components/ChatPanel';
 import { useToast } from '@/hooks/useToast';
 import { GraphView } from '@/components/GraphView';
 import { GlowParticleEffect } from '@/components/GlowParticleEffect';
-import vaultLogo from '@/assets/vault.png';
 import {
   listNotes,
   getNote,
@@ -537,9 +536,31 @@ export function MainApp() {
       </Alert>
       
       {/* Top bar */}
-      <div className="border-b border-border p-2 animate-fade-in">
+      <div className="border-b border-border p-4 animate-fade-in">
         <div className="relative flex items-center justify-center">
-          <img src={vaultLogo} alt="Vault.MCP" className="w-16 h-16" />
+          <h1
+            className="text-xl tracking-[0.15em] uppercase select-none"
+            style={{
+              fontFamily: '"Press Start 2P", monospace',
+              fontWeight: 400,
+              color: "#3b82f6",
+              textShadow: `
+                0px 0px 1px #000000,
+                1px 1px 0 #111827,
+                2px 2px 0 #020617,
+                3px 3px 0 #020617,
+                4px 4px 0 #020617,
+                5px 5px 0 #020617,
+                0px 0px 4px rgba(15,23,42,0.9),
+                0px 0px 10px rgba(59,130,246,0.7)
+              `,
+              textRendering: "geometricPrecision",
+              WebkitFontSmoothing: "none",
+              transform: "skewX(-4deg)",
+            }}
+          >
+            Vault.MCP
+          </h1>
           <div className="absolute right-0 flex gap-2">
             {isDemoMode && (
               <Button
