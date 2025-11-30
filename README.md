@@ -123,6 +123,14 @@ MIT License - See LICENSE file for details
 
 Contributions welcome! Open an issue or submit a PR.
 
+## 📱 Follow Us
+
+Stay connected with our community and see the Hackathon demo in action:
+
+- **Instagram**: https://www.instagram.com/p/DRqCPOTEcKl/?igsh=MTlhZjJmZ2podzlmcA==
+- **Twitter**: https://x.com/a_i_belgpt/status/1994900016553480593?t=XOKiCFExcmtNwZiqPouUvQ&s=09
+- **YouTube (Hackathon Demo)**: https://youtu.be/vHCsI1a7MUY
+
 ---
 
 Built with ❤️ for the AI-human documentation collaboration workflow
