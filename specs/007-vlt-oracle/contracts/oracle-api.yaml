@@ -1,0 +1,361 @@
+openapi: 3.1.0
+info:
+  title: Vlt Oracle API
+  description: Multi-source intelligent context retrieval API for Document-MCP
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8000
+    description: Local development
+  - url: https://{space}.hf.space
+    description: HuggingFace Spaces
+    variables:
+      space:
+        default: MCP-1st-Birthday-Vault-MCP
+
+paths:
+  /api/oracle:
+    post:
+      operationId: askOracle
+      summary: Ask a question across all knowledge sources
+      description: |
+        Queries the markdown vault, code index, and vlt threads in parallel,
+        then synthesizes an answer using a capable LLM.
+      tags:
+        - Oracle
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OracleRequest'
+      responses:
+        '200':
+          description: Successful oracle response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OracleResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal error (LLM failure, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/oracle/stream:
+    post:
+      operationId: askOracleStream
+      summary: Ask oracle with streaming response
+      description: |
+        Same as /api/oracle but streams progress updates and answer tokens
+        as newline-delimited JSON.
+      tags:
+        - Oracle
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OracleRequest'
+      responses:
+        '200':
+          description: Streaming response
+          content:
+            application/x-ndjson:
+              schema:
+                $ref: '#/components/schemas/OracleStreamEvent'
+
+  /api/coderag/status:
+    get:
+      operationId: getCoderagStatus
+      summary: Get code index status
+      description: Returns indexing statistics and health for the current project.
+      tags:
+        - CodeRAG
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Index status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoderagStatus'
+
+  /api/coderag/search:
+    get:
+      operationId: searchCode
+      summary: Search indexed code
+      description: Semantic search over code chunks.
+      tags:
+        - CodeRAG
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 500
+          description: Search query
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            maximum: 50
+          description: Max results to return
+        - name: language
+          in: query
+          schema:
+            type: string
+            enum: [python, typescript, javascript]
+          description: Filter by language
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CodeSearchResult'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    OracleRequest:
+      type: object
+      required:
+        - question
+      properties:
+        question:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: Natural language question
+        sources:
+          type: array
+          items:
+            type: string
+            enum: [vault, code, threads]
+          description: Knowledge sources to query (all if empty)
+        explain:
+          type: boolean
+          default: false
+          description: Include retrieval traces in response
+        max_results:
+          type: integer
+          default: 10
+          maximum: 50
+          description: Max results per source
+
+    OracleResponse:
+      type: object
+      required:
+        - answer
+        - sources
+        - model
+        - tokens
+        - duration_ms
+      properties:
+        answer:
+          type: string
+          description: Synthesized markdown answer
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/RetrievalResult'
+          description: Cited sources with relevance scores
+        traces:
+          type: object
+          description: Retrieval debug info (if explain=true)
+          properties:
+            vault_results:
+              type: array
+              items:
+                $ref: '#/components/schemas/RetrievalResult'
+            code_results:
+              type: array
+              items:
+                $ref: '#/components/schemas/RetrievalResult'
+            thread_results:
+              type: array
+              items:
+                $ref: '#/components/schemas/RetrievalResult'
+            ranking_scores:
+              type: object
+              additionalProperties:
+                type: number
+        model:
+          type: string
+          description: Model used for synthesis
+        tokens:
+          type: integer
+          description: Total tokens consumed
+        duration_ms:
+          type: integer
+          description: Processing time in milliseconds
+
+    OracleStreamEvent:
+      oneOf:
+        - type: object
+          properties:
+            type:
+              type: string
+              const: status
+            message:
+              type: string
+          required: [type, message]
+        - type: object
+          properties:
+            type:
+              type: string
+              const: sources
+            sources:
+              type: array
+              items:
+                $ref: '#/components/schemas/RetrievalResult'
+          required: [type, sources]
+        - type: object
+          properties:
+            type:
+              type: string
+              const: token
+            content:
+              type: string
+          required: [type, content]
+        - type: object
+          properties:
+            type:
+              type: string
+              const: done
+            tokens:
+              type: integer
+            duration_ms:
+              type: integer
+          required: [type, tokens, duration_ms]
+
+    RetrievalResult:
+      type: object
+      required:
+        - content
+        - source_type
+        - source_path
+        - score
+      properties:
+        content:
+          type: string
+          description: Retrieved text content
+        source_type:
+          type: string
+          enum: [vault, code, thread]
+          description: Knowledge source type
+        source_path:
+          type: string
+          description: Path/ID to source
+        score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Relevance score
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Source-specific metadata
+
+    CodeSearchResult:
+      type: object
+      required:
+        - file_path
+        - chunk_type
+        - name
+        - qualified_name
+        - score
+      properties:
+        file_path:
+          type: string
+        chunk_type:
+          type: string
+          enum: [function, class, method, module]
+        name:
+          type: string
+        qualified_name:
+          type: string
+        signature:
+          type: string
+        docstring:
+          type: string
+        lineno:
+          type: integer
+        language:
+          type: string
+        score:
+          type: number
+          format: float
+
+    CoderagStatus:
+      type: object
+      required:
+        - indexed
+        - chunks_count
+        - files_count
+      properties:
+        indexed:
+          type: boolean
+          description: Whether code index exists
+        chunks_count:
+          type: integer
+          description: Total code chunks indexed
+        files_count:
+          type: integer
+          description: Total files indexed
+        languages:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Chunk count by language
+        last_indexed:
+          type: string
+          format: date-time
+          description: Last indexing timestamp
+        storage_bytes:
+          type: integer
+          description: Index storage size
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          additionalProperties: true

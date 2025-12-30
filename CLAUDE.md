@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Document-MCP** is a multi-tenant Obsidian-like documentation viewer with AI-first workflow. AI agents write/update documentation via MCP (Model Context Protocol), while humans read and edit through a web UI. The system provides per-user vaults with Markdown notes, full-text search (SQLite FTS5), wikilink resolution, tag indexing, and backlink tracking.
 
-**Architecture**: Python backend (FastAPI + FastMCP) + React frontend (Vite + shadcn/ui)
+**Architecture**: Python 3.11+ backend (FastAPI + FastMCP) + React 19 frontend (Vite 7 + shadcn/ui)
 
 **Key Concepts**:
 - **Vault**: Per-user filesystem directory containing .md files
@@ -14,8 +14,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Indexer**: SQLite FTS5 for full-text search + separate tables for tags/links/metadata
 - **Wikilinks**: `[[Note Name]]` resolved via case-insensitive slug matching (prefers same folder, then lexicographic)
 - **Optimistic Concurrency**: Version counter in SQLite (not frontmatter); UI sends `if_version`, MCP uses last-write-wins
+- **RAG**: LlamaIndex with Gemini embeddings for semantic search over vault content
+- **TTS**: ElevenLabs integration for text-to-speech note reading
 
 ## Development Commands
+
+### Quick Start (Full Stack)
+
+```bash
+# Automated startup (recommended)
+./start-dev.sh                # Starts backend (8000) + frontend (5173)
+./stop-dev.sh                 # Stop both services
+./status-dev.sh               # Check running processes
+```
 
 ### Backend (Python 3.11+)
 
@@ -26,9 +37,7 @@ cd backend
 uv venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 uv pip install -e .
-
-# Install dev dependencies
-uv pip install -e ".[dev]"
+uv pip install -e ".[dev]"   # Dev dependencies (pytest, httpx)
 
 # Run FastAPI HTTP server (for UI)
 uv run uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
@@ -48,7 +57,7 @@ uv run pytest -v                       # Verbose output
 uv run pytest --lf                     # Last failed tests
 ```
 
-### Frontend (Node 18+, React + Vite)
+### Frontend (Node 18+, React 19 + Vite 7)
 
 ```bash
 cd frontend
@@ -67,6 +76,15 @@ npm run lint                  # ESLint check
 
 # Preview production build
 npm run preview               # Serve dist/ (after npm run build)
+```
+
+### Docker (Local Testing)
+
+```bash
+# Build and run container locally (mirrors HF Spaces deployment)
+docker build -t document-mcp .
+docker run -p 7860:7860 -e JWT_SECRET_KEY="dev-secret" document-mcp
+# Access at http://localhost:7860
 ```
 
 ### Database Initialization
@@ -107,7 +125,15 @@ uv run python -c "from src.services.database import DatabaseService; DatabaseSer
    - `database.py`: SQLite connection manager + schema DDL
 
 3. **API/MCP** (`backend/src/api/` and `backend/src/mcp/`):
-   - `api/routes/`: FastAPI endpoints (18 routes: auth, notes CRUD, search, backlinks, tags, index health/rebuild, graph, demo, system)
+   - `api/routes/`: FastAPI endpoints
+     - `auth.py`: OAuth, JWT, user endpoints
+     - `notes.py`: CRUD operations (with optimistic concurrency)
+     - `search.py`: Full-text search
+     - `index.py`: Index rebuild/health
+     - `graph.py`: Note relationship graph for visualization
+     - `rag.py`: RAG/vector DB queries (LlamaIndex + Gemini)
+     - `tts.py`: Text-to-speech (ElevenLabs)
+     - `demo.py`, `system.py`: Demo data seeding, system info
    - `api/middleware/auth_middleware.py`: JWT Bearer token validation
    - `mcp/server.py`: FastMCP tools (7 tools: list, read, write, delete, search, backlinks, tags)
 
@@ -168,17 +194,24 @@ In `indexer.py` (`resolve_wikilink` logic):
 
 **Component Hierarchy**:
 ```
-App.tsx (main layout)
-├── DirectoryTree.tsx (left sidebar: vault explorer with virtualization)
-├── NoteViewer.tsx (right pane: read mode, react-markdown rendering)
-├── NoteEditor.tsx (right pane: edit mode, split view with live preview)
-├── SearchBar.tsx (debounced search with dropdown results)
-└── AuthFlow.tsx (HF OAuth login, token management)
+App.tsx (main layout, routing)
+├── MainApp.tsx (authenticated app shell)
+│   ├── DirectoryTree.tsx (left sidebar: vault explorer)
+│   ├── NoteViewer.tsx (read mode: react-markdown rendering)
+│   ├── NoteEditor.tsx (edit mode: split view with live preview)
+│   ├── SearchBar.tsx (debounced search with dropdown)
+│   ├── ChatPanel.tsx (AI chat interface for RAG)
+│   ├── GraphView.tsx (note relationship visualization)
+│   └── TableOfContents.tsx (heading navigator)
+├── Login.tsx (HF OAuth flow)
+└── Settings.tsx (token access, preferences)
 ```
 
 **Key Libraries**:
-- `react-markdown`: Markdown rendering with wikilink custom renderer
-- `shadcn/ui`: UI components (Tree, ScrollArea, Button, Textarea, Dialog)
+- `react-markdown` + `remark-gfm`: Markdown rendering with GFM support
+- `shadcn/ui`: UI components (30+ primitives from Radix UI)
+- `react-force-graph-2d`: Note relationship graph visualization
+- `react-resizable-panels`: Split pane layout
 - `lib/wikilink.ts`: Parse `[[...]]` + resolve via GET /api/backlinks
 - `services/api.ts`: Fetch wrapper with Bearer token injection
 
@@ -210,6 +243,10 @@ See `.env.example` for all variables. Key settings:
 **HF Space variables** (only needed when MODE=space):
 - HF_OAUTH_CLIENT_ID, HF_OAUTH_CLIENT_SECRET, HF_SPACE_HOST
 
+**Optional integrations**:
+- GOOGLE_API_KEY: Gemini API for RAG embeddings and LLM
+- ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, ELEVENLABS_MODEL: TTS integration
+
 ## Constraints & Limits
 
 - **Note size**: 1 MiB max (enforced in vault.py)
@@ -238,7 +275,7 @@ This repo uses the SpecKit methodology for feature planning:
 - **Slash commands**: `/speckit.specify`, `/speckit.plan`, `/speckit.tasks`, `/speckit.implement`
 - **Scripts**: `.specify/scripts/bash/` (feature scaffolding, context updates)
 
-Current active feature: `001-obsidian-docs-viewer`
+Implemented features: `001-obsidian-docs-viewer`, `002-add-graph-view`, `003-ai-chat-window`, `004-gemini-vault-chat`, `006-ui-polish`
 
 ## MCP Client Configuration
 
@@ -272,11 +309,17 @@ Current active feature: `001-obsidian-docs-viewer`
 
 Obtain JWT: `POST /api/tokens` after HF OAuth login.
 
-## Active Technologies
-- Python 3.11+ (backend), TypeScript (frontend) + FastAPI, LlamaIndex, llama-index-llms-google-genai, llama-index-embeddings-google-genai, React 18+, Tailwind CSS, Shadcn/UI (004-gemini-vault-chat)
-- Filesystem vault (existing), LlamaIndex persisted vector store (new, under `data/llamaindex/`) (004-gemini-vault-chat)
-- TypeScript 5.x, React 18+ (006-ui-polish)
-- localStorage for user preferences (font size, TOC panel state) (006-ui-polish)
+## ChatGPT Widget Integration
+
+The app can be embedded in ChatGPT as an iFrame:
+- Widget served at `/widget.html` with special MIME type `text/html+skybridge`
+- MCP endpoint remains accessible for other AI agents simultaneously
+- Entry point: `frontend/src/widget.tsx`
 
 ## Recent Changes
-- 004-gemini-vault-chat: Added Python 3.11+ (backend), TypeScript (frontend) + FastAPI, LlamaIndex, llama-index-llms-google-genai, llama-index-embeddings-google-genai, React 18+, Tailwind CSS, Shadcn/UI
+- 007-vlt-oracle: Added Python 3.11+ (vlt-cli), TypeScript 5.x (frontend)
+- 007-vlt-oracle: Added [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
+
+## Active Technologies
+- Python 3.11+ (vlt-cli), TypeScript 5.x (frontend) (007-vlt-oracle)
+- SQLite (vlt-cli ~/.vlt/vault.db) + Document-MCP SQLite (data/index.db) (007-vlt-oracle)

@@ -1,0 +1,395 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Vlt Oracle MCP Tools",
+  "description": "MCP tool definitions for the Vlt Oracle feature - 5 tools for AI coding agents",
+  "version": "2.0.0",
+  "tools": [
+    {
+      "name": "ask_oracle",
+      "description": "Ask a question about the codebase. Searches across documentation (markdown vault), code (functions, classes, imports), and development history (past decisions, debugging sessions). Returns a synthesized answer with source citations. Use for conceptual questions, understanding code behavior, or finding how things work.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["question"],
+        "properties": {
+          "question": {
+            "type": "string",
+            "description": "Natural language question about the codebase",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "sources": {
+            "type": "array",
+            "description": "Knowledge sources to query. Omit to query all sources.",
+            "items": {
+              "type": "string",
+              "enum": ["vault", "code", "threads"]
+            }
+          },
+          "explain": {
+            "type": "boolean",
+            "description": "Include retrieval traces for debugging",
+            "default": false
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["answer", "sources"],
+        "properties": {
+          "answer": {
+            "type": "string",
+            "description": "Synthesized markdown answer"
+          },
+          "sources": {
+            "type": "array",
+            "description": "Cited sources with relevance scores",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["vault", "code", "thread", "definition", "reference"]
+                },
+                "path": {
+                  "type": "string",
+                  "description": "Source path (file:line, note path, thread ID)"
+                },
+                "snippet": {
+                  "type": "string",
+                  "description": "Relevant excerpt"
+                },
+                "score": {
+                  "type": "number",
+                  "description": "Relevance score (0-1)"
+                }
+              }
+            }
+          },
+          "repo_map_slice": {
+            "type": "string",
+            "description": "Relevant portion of repository structure map"
+          },
+          "query_type": {
+            "type": "string",
+            "description": "Detected query type",
+            "enum": ["definition", "reference", "conceptual", "behavioral"]
+          }
+        }
+      }
+    },
+    {
+      "name": "search_code",
+      "description": "Search code using hybrid retrieval (semantic vector search + exact keyword match). Returns ranked code chunks with context. Use when you need to find specific code patterns, function implementations, or explore the codebase.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["query"],
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query - can be natural language or code pattern",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum results to return",
+            "default": 10,
+            "maximum": 50
+          },
+          "language": {
+            "type": "string",
+            "description": "Filter by programming language",
+            "enum": ["python", "typescript", "javascript", "go", "rust"]
+          },
+          "file_pattern": {
+            "type": "string",
+            "description": "Glob pattern to filter files (e.g., 'src/**/*.py')"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["results"],
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "file_path": {"type": "string"},
+                "qualified_name": {"type": "string"},
+                "chunk_type": {"type": "string"},
+                "signature": {"type": "string"},
+                "docstring": {"type": "string"},
+                "body": {"type": "string"},
+                "lineno": {"type": "integer"},
+                "language": {"type": "string"},
+                "score": {"type": "number"},
+                "retrieval_method": {
+                  "type": "string",
+                  "enum": ["vector", "bm25", "both"]
+                }
+              }
+            }
+          },
+          "total_matches": {"type": "integer"}
+        }
+      }
+    },
+    {
+      "name": "find_definition",
+      "description": "Find where a symbol (function, class, variable) is defined. Uses code intelligence (ctags/SCIP) for exact lookup, not fuzzy search. Returns precise file:line location. Use when you need to navigate to a symbol's definition.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["symbol"],
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "Symbol name to find (e.g., 'UserService', 'authenticate', 'MAX_RETRIES')",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "scope": {
+            "type": "string",
+            "description": "Optional file path to narrow search (e.g., 'src/services/')"
+          },
+          "kind": {
+            "type": "string",
+            "description": "Symbol kind to filter",
+            "enum": ["function", "class", "method", "variable", "constant", "any"]
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["found"],
+        "properties": {
+          "found": {
+            "type": "boolean",
+            "description": "Whether the symbol was found"
+          },
+          "definitions": {
+            "type": "array",
+            "description": "Definition locations (may be multiple for overloads/duplicates)",
+            "items": {
+              "type": "object",
+              "properties": {
+                "file_path": {"type": "string"},
+                "lineno": {"type": "integer"},
+                "kind": {"type": "string"},
+                "signature": {"type": "string"},
+                "scope": {"type": "string", "description": "Enclosing class/module"},
+                "context": {"type": "string", "description": "Surrounding code lines"}
+              }
+            }
+          },
+          "lookup_method": {
+            "type": "string",
+            "description": "How the definition was found",
+            "enum": ["ctags", "scip", "graph", "semantic"]
+          }
+        }
+      }
+    },
+    {
+      "name": "find_references",
+      "description": "Find all usages/references of a symbol. Uses call graph and code intelligence to find where a function is called, where a class is instantiated, etc. Returns all locations with context. Use when you need to understand impact of changes or find usage patterns.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["symbol"],
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "Symbol name to find references for",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum references to return",
+            "default": 20,
+            "maximum": 100
+          },
+          "include_definition": {
+            "type": "boolean",
+            "description": "Include the definition in results",
+            "default": false
+          },
+          "reference_type": {
+            "type": "string",
+            "description": "Type of references to find",
+            "enum": ["calls", "imports", "inherits", "all"],
+            "default": "all"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["found"],
+        "properties": {
+          "found": {
+            "type": "boolean"
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "file_path": {"type": "string"},
+                "lineno": {"type": "integer"},
+                "reference_type": {
+                  "type": "string",
+                  "enum": ["calls", "imports", "inherits", "uses"]
+                },
+                "context": {"type": "string", "description": "Line of code containing reference"},
+                "caller": {"type": "string", "description": "Enclosing function/class"}
+              }
+            }
+          },
+          "total_count": {"type": "integer"},
+          "lookup_method": {
+            "type": "string",
+            "enum": ["graph", "scip", "semantic"]
+          }
+        }
+      }
+    },
+    {
+      "name": "get_repo_map",
+      "description": "Get codebase structure overview. Returns an Aider-style repository map showing files, classes, functions, and their signatures. Prioritizes important symbols using graph centrality. Use when you need to understand the overall codebase structure or navigate to relevant areas.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "description": "Subdirectory to focus on (e.g., 'src/api/'). Omit for entire repo."
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "Maximum tokens for the map (controls pruning)",
+            "default": 4000,
+            "maximum": 16000
+          },
+          "include_signatures": {
+            "type": "boolean",
+            "description": "Include function/method signatures",
+            "default": true
+          },
+          "include_docstrings": {
+            "type": "boolean",
+            "description": "Include brief docstrings",
+            "default": false
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["map"],
+        "properties": {
+          "map": {
+            "type": "string",
+            "description": "Aider-style repository map text"
+          },
+          "stats": {
+            "type": "object",
+            "properties": {
+              "files_included": {"type": "integer"},
+              "symbols_included": {"type": "integer"},
+              "symbols_total": {"type": "integer"},
+              "token_count": {"type": "integer"}
+            }
+          },
+          "scope_applied": {
+            "type": "string",
+            "description": "Actual scope used (null if entire repo)"
+          }
+        }
+      }
+    }
+  ],
+  "cli_commands": {
+    "oracle": {
+      "description": "Multi-source intelligent context retrieval",
+      "usage": "vlt oracle \"<question>\" [options]",
+      "options": {
+        "--source, -s": {
+          "type": "string",
+          "multiple": true,
+          "choices": ["vault", "code", "threads"],
+          "description": "Limit search to specific sources"
+        },
+        "--explain": {
+          "type": "boolean",
+          "description": "Show retrieval traces before answer"
+        },
+        "--json": {
+          "type": "boolean",
+          "description": "Output as JSON"
+        },
+        "--project, -p": {
+          "type": "string",
+          "description": "Project context (auto-detected from vlt.toml)"
+        }
+      },
+      "examples": [
+        {
+          "command": "vlt oracle \"How does authentication work?\"",
+          "description": "Search all sources for auth info"
+        },
+        {
+          "command": "vlt oracle --source=code \"What functions call search_notes?\"",
+          "description": "Search only code index"
+        },
+        {
+          "command": "vlt oracle --explain \"Why was caching added?\"",
+          "description": "Show retrieval traces"
+        }
+      ]
+    },
+    "coderag": {
+      "description": "Code indexing and search",
+      "subcommands": {
+        "init": {
+          "usage": "vlt coderag init [options]",
+          "description": "Initialize code index (vector, BM25, graph, ctags, repo map)",
+          "options": {
+            "--project, -p": {"type": "string", "description": "Project ID"},
+            "--path": {"type": "string", "description": "Path to index (default: current directory)"}
+          }
+        },
+        "status": {
+          "usage": "vlt coderag status [options]",
+          "description": "Show index health and statistics",
+          "options": {
+            "--json": {"type": "boolean", "description": "Output as JSON"}
+          }
+        },
+        "search": {
+          "usage": "vlt coderag search \"<query>\" [options]",
+          "description": "Search indexed code (hybrid: vector + BM25)",
+          "options": {
+            "--limit, -n": {"type": "integer", "default": 10},
+            "--language, -l": {"type": "string", "choices": ["python", "typescript", "javascript"]},
+            "--json": {"type": "boolean"}
+          }
+        },
+        "map": {
+          "usage": "vlt coderag map [options]",
+          "description": "View or regenerate repository map",
+          "options": {
+            "--scope": {"type": "string", "description": "Subdirectory to focus on"},
+            "--max-tokens": {"type": "integer", "default": 4000},
+            "--regenerate": {"type": "boolean", "description": "Force regeneration"}
+          }
+        },
+        "sync": {
+          "usage": "vlt coderag sync [options]",
+          "description": "Update index for changed files",
+          "options": {
+            "--force": {"type": "boolean", "description": "Force full re-index"}
+          }
+        }
+      }
+    }
+  }
+}
