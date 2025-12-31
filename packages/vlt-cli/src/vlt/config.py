@@ -12,6 +12,17 @@ Key settings:
 - VLT_VAULT_URL: Backend server URL (default: http://localhost:8000)
 - VLT_DATABASE_URL: Local SQLite database path
 
+Oracle Thin Client Mode:
+When VLT_SYNC_TOKEN is set and backend is available, the CLI uses thin client mode:
+- Oracle queries are sent to the backend API instead of running locally
+- Context is shared with the web UI (same conversation tree)
+- LLM API keys are managed server-side
+
+Local Mode (fallback):
+When backend is unavailable or --local flag is used:
+- Uses local OracleOrchestrator with local indexes
+- Requires VLT_OPENROUTER_API_KEY for LLM synthesis
+
 DEPRECATED (will be removed):
 - VLT_OPENROUTER_API_KEY: No longer used - LLM calls are handled server-side
 """
@@ -35,6 +46,10 @@ class Settings(BaseSettings):
     # Server sync configuration (primary)
     sync_token: str | None = None
     vault_url: str = "http://localhost:8000"
+
+    # Oracle configuration
+    oracle_timeout: float = 60.0  # Request timeout for Oracle queries
+    oracle_prefer_backend: bool = True  # Prefer backend when available
 
     # Daemon configuration
     daemon_port: int = 8765
@@ -75,6 +90,16 @@ class Settings(BaseSettings):
     def is_server_configured(self) -> bool:
         """Check if server sync is properly configured."""
         return bool(self.sync_token)
+
+    @property
+    def backend_url(self) -> str:
+        """Get the backend URL (alias for vault_url)."""
+        return self.vault_url
+
+    @property
+    def can_use_backend_oracle(self) -> bool:
+        """Check if backend Oracle can be used (token + prefer backend)."""
+        return self.is_server_configured and self.oracle_prefer_backend
 
 
 settings = Settings()

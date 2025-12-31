@@ -1415,6 +1415,10 @@ def oracle_query(
     explain: bool = typer.Option(False, "--explain", help="Show detailed retrieval traces for debugging"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
     max_tokens: int = typer.Option(16000, "--max-tokens", help="Maximum tokens for context assembly"),
+    local: bool = typer.Option(False, "--local", "-l", help="Force local mode (skip backend check)"),
+    model: str = typer.Option(None, "--model", "-m", help="Override LLM model (e.g., 'anthropic/claude-sonnet-4')"),
+    thinking: bool = typer.Option(False, "--thinking", "-t", help="Enable extended thinking mode"),
+    stream: bool = typer.Option(True, "--stream/--no-stream", help="Enable/disable streaming output"),
 ):
     """
     Ask Oracle a question about the codebase.
@@ -1426,11 +1430,16 @@ def oracle_query(
     - Reranks results for relevance
     - Synthesizes a comprehensive answer with citations
 
+    By default, Oracle uses the backend server when available (thin client mode),
+    which shares context with the web UI. Use --local to force local processing.
+
     Examples:
         vlt oracle "How does authentication work?"
         vlt oracle "Where is UserService defined?" --source code
         vlt oracle "What calls the login function?" --explain
         vlt oracle "Why did we choose SQLite?" --source threads
+        vlt oracle "Explain the architecture" --local
+        vlt oracle "Complex question" --thinking --model anthropic/claude-sonnet-4
 
     The response includes:
     - A synthesized answer from an LLM
@@ -1440,10 +1449,11 @@ def oracle_query(
     """
     import asyncio
     from vlt.core.identity import load_project_identity
-    from vlt.core.oracle import OracleOrchestrator
+    from vlt.core.oracle_client import OracleClient
     from rich.console import Console
     from rich.markdown import Markdown
     from rich.panel import Panel
+    from rich.live import Live
     import json as json_lib
 
     console = Console()
@@ -1462,27 +1472,10 @@ def oracle_query(
     # Resolve project path
     project_path = Path(".").resolve()
 
-    # Check if API key is configured
-    # Oracle currently needs OpenRouter for synthesis, but in the future
-    # this will be handled server-side like the Librarian
+    # Load settings
     settings = Settings()
-    if not settings.openrouter_api_key and not settings.sync_token:
-        console.print("[red]Error: No API credentials configured.[/red]")
-        console.print()
-        console.print("Option 1 (Recommended): Configure server sync token:")
-        console.print("  vlt config set-key <your-sync-token>")
-        console.print()
-        console.print("Option 2 (Legacy): Set OpenRouter API key directly:")
-        console.print("  export VLT_OPENROUTER_API_KEY=<your-api-key>")
-        raise typer.Exit(code=1)
 
-    # Warn if using legacy mode
-    if settings.openrouter_api_key and not settings.sync_token:
-        console.print("[yellow]Note: Using legacy OpenRouter mode. Consider migrating to server sync.[/yellow]")
-        console.print("[dim]Run: vlt config set-key <sync-token> --server <url>[/dim]")
-        console.print()
-
-    # Display query
+    # Display query header
     console.print()
     console.print(Panel(
         f"[bold cyan]Question:[/bold cyan] {question}",
@@ -1491,8 +1484,273 @@ def oracle_query(
     ))
     console.print()
 
+    # Try thin client mode (backend API) first unless --local is specified
+    client = OracleClient()
+    use_backend = False
+
+    if not local and settings.sync_token:
+        with console.status("[bold blue]Checking backend availability...[/bold blue]"):
+            use_backend = client.is_available()
+
+        if use_backend:
+            console.print("[dim]Using backend server (thin client mode)[/dim]")
+        else:
+            console.print("[dim yellow]Backend unavailable, using local mode[/dim yellow]")
+
+    if use_backend:
+        # =====================================================================
+        # Thin Client Mode - Use Backend API
+        # =====================================================================
+        _oracle_via_backend(
+            console=console,
+            client=client,
+            question=question,
+            source=source,
+            explain=explain,
+            json_output=json_output,
+            max_tokens=max_tokens,
+            model=model,
+            thinking=thinking,
+            stream=stream,
+        )
+    else:
+        # =====================================================================
+        # Local Mode - Use Local OracleOrchestrator
+        # =====================================================================
+        _oracle_local(
+            console=console,
+            question=question,
+            project=project,
+            project_path=project_path,
+            settings=settings,
+            source=source,
+            explain=explain,
+            json_output=json_output,
+            max_tokens=max_tokens,
+        )
+
+
+def _oracle_via_backend(
+    console,
+    client: "OracleClient",
+    question: str,
+    source: List[str],
+    explain: bool,
+    json_output: bool,
+    max_tokens: int,
+    model: str,
+    thinking: bool,
+    stream: bool,
+):
+    """Execute Oracle query via backend API (thin client mode)."""
+    import asyncio
+    from rich.markdown import Markdown
+    from rich.panel import Panel
+    from rich.live import Live
+    import json as json_lib
+
+    async def run_streaming():
+        """Run streaming query."""
+        content_parts = []
+        sources = []
+        tokens_used = None
+        model_used = None
+        error_msg = None
+
+        # Use Live for real-time updates
+        current_content = ""
+
+        if not json_output:
+            with Live(console=console, refresh_per_second=4) as live:
+                async for chunk in client.query_stream(
+                    question=question,
+                    sources=source if source else None,
+                    explain=explain,
+                    model=model,
+                    thinking=thinking,
+                    max_tokens=max_tokens,
+                ):
+                    if chunk.type == "thinking":
+                        if chunk.content:
+                            live.update(Panel(
+                                f"[dim italic]{chunk.content}[/dim italic]",
+                                title="Thinking...",
+                                border_style="dim"
+                            ))
+                    elif chunk.type == "tool_call":
+                        if chunk.tool_call:
+                            tool_name = chunk.tool_call.get("name", "unknown")
+                            live.update(Panel(
+                                f"[cyan]Calling: {tool_name}[/cyan]",
+                                title="Tool Execution",
+                                border_style="cyan"
+                            ))
+                    elif chunk.type == "content":
+                        if chunk.content:
+                            content_parts.append(chunk.content)
+                            current_content = "".join(content_parts)
+                            live.update(Panel(
+                                Markdown(current_content),
+                                title="Answer",
+                                border_style="green",
+                                padding=(1, 2)
+                            ))
+                    elif chunk.type == "source":
+                        if chunk.source:
+                            sources.append(chunk.source)
+                    elif chunk.type == "done":
+                        tokens_used = chunk.tokens_used
+                        model_used = chunk.model_used
+                    elif chunk.type == "error":
+                        error_msg = chunk.error
+                        break
+        else:
+            # JSON mode - collect all chunks without live display
+            async for chunk in client.query_stream(
+                question=question,
+                sources=source if source else None,
+                explain=explain,
+                model=model,
+                thinking=thinking,
+                max_tokens=max_tokens,
+            ):
+                if chunk.type == "content" and chunk.content:
+                    content_parts.append(chunk.content)
+                elif chunk.type == "source" and chunk.source:
+                    sources.append(chunk.source)
+                elif chunk.type == "done":
+                    tokens_used = chunk.tokens_used
+                    model_used = chunk.model_used
+                elif chunk.type == "error":
+                    error_msg = chunk.error
+                    break
+
+        return {
+            "answer": "".join(content_parts),
+            "sources": sources,
+            "tokens_used": tokens_used,
+            "model_used": model_used,
+            "error": error_msg,
+        }
+
+    async def run_non_streaming():
+        """Run non-streaming query."""
+        try:
+            response = await client.query(
+                question=question,
+                sources=source if source else None,
+                explain=explain,
+                model=model,
+                thinking=thinking,
+                max_tokens=max_tokens,
+            )
+            return {
+                "answer": response.answer,
+                "sources": response.sources,
+                "tokens_used": response.tokens_used,
+                "model_used": response.model_used,
+                "error": None,
+            }
+        except Exception as e:
+            return {"answer": "", "sources": [], "tokens_used": None, "model_used": None, "error": str(e)}
+
+    # Execute query
+    if stream:
+        result = asyncio.run(run_streaming())
+    else:
+        with console.status("[bold blue]Querying Oracle...[/bold blue]"):
+            result = asyncio.run(run_non_streaming())
+
+    # Handle error
+    if result["error"]:
+        console.print(f"[red]Error: {result['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    # JSON output mode
+    if json_output:
+        output_data = {
+            "question": question,
+            "answer": result["answer"],
+            "sources": [
+                {
+                    "path": s.path,
+                    "type": s.source_type,
+                    "snippet": s.snippet,
+                    "score": s.score
+                }
+                for s in result["sources"]
+            ],
+            "tokens_used": result["tokens_used"],
+            "model_used": result["model_used"],
+            "mode": "backend",
+        }
+        console.print(json_lib.dumps(output_data, indent=2))
+        return
+
+    # If not streaming, display answer now
+    if not stream:
+        console.print()
+        console.print(Panel(
+            Markdown(result["answer"]),
+            title="Answer",
+            border_style="green",
+            padding=(1, 2)
+        ))
+
+    # Show sources
+    if result["sources"]:
+        console.print()
+        console.print("[bold]Sources:[/bold]")
+        for i, src in enumerate(result["sources"][:5], 1):
+            score = src.score or 0
+            score_color = "green" if score >= 0.8 else "yellow"
+            console.print(
+                f"  {i}. [{score_color}]{src.path}[/{score_color}] "
+                f"({src.source_type}, score: {score:.2f})"
+            )
+
+    # Show metadata
+    console.print()
+    console.print(
+        f"[dim]Mode: backend | "
+        f"Model: {result['model_used'] or 'unknown'} | "
+        f"Tokens: {result['tokens_used'] or 'N/A'}[/dim]"
+    )
+
+    console.print()
+
+
+def _oracle_local(
+    console,
+    question: str,
+    project: str,
+    project_path: Path,
+    settings: "Settings",
+    source: List[str],
+    explain: bool,
+    json_output: bool,
+    max_tokens: int,
+):
+    """Execute Oracle query using local OracleOrchestrator."""
+    import asyncio
+    from vlt.core.oracle import OracleOrchestrator
+    from rich.markdown import Markdown
+    from rich.panel import Panel
+    import json as json_lib
+
+    # Check if API key is configured for local mode
+    if not settings.openrouter_api_key and not settings.sync_token:
+        console.print("[red]Error: No API credentials configured for local mode.[/red]")
+        console.print()
+        console.print("Option 1 (Recommended): Configure server sync token:")
+        console.print("  vlt config set-key <your-sync-token>")
+        console.print()
+        console.print("Option 2 (Legacy): Set OpenRouter API key directly:")
+        console.print("  export VLT_OPENROUTER_API_KEY=<your-api-key>")
+        raise typer.Exit(code=1)
+
     # Show status while processing
-    with console.status("[bold blue]Searching knowledge sources...[/bold blue]") as status:
+    with console.status("[bold blue]Searching knowledge sources (local)...[/bold blue]") as status:
         try:
             # Create orchestrator
             orchestrator = OracleOrchestrator(
@@ -1522,18 +1780,19 @@ def oracle_query(
             "answer": response.answer,
             "sources": [
                 {
-                    "path": source.source_path,
-                    "type": source.source_type.value,
-                    "method": source.retrieval_method.value,
-                    "score": source.score
+                    "path": src.source_path,
+                    "type": src.source_type.value,
+                    "method": src.retrieval_method.value,
+                    "score": src.score
                 }
-                for source in response.sources
+                for src in response.sources
             ],
             "query_type": response.query_type,
             "model": response.model,
             "tokens_used": response.tokens_used,
             "cost_cents": response.cost_cents,
             "duration_ms": response.duration_ms,
+            "mode": "local",
         }
 
         if response.traces:
@@ -1555,18 +1814,19 @@ def oracle_query(
     if response.sources:
         console.print()
         console.print("[bold]Sources:[/bold]")
-        for i, source in enumerate(response.sources[:5], 1):  # Show top 5
-            score_color = "green" if source.score >= 0.8 else "yellow"
+        for i, src in enumerate(response.sources[:5], 1):  # Show top 5
+            score_color = "green" if src.score >= 0.8 else "yellow"
             console.print(
-                f"  {i}. [{score_color}]{source.source_path}[/{score_color}] "
-                f"({source.source_type.value} via {source.retrieval_method.value}, "
-                f"score: {source.score:.2f})"
+                f"  {i}. [{score_color}]{src.source_path}[/{score_color}] "
+                f"({src.source_type.value} via {src.retrieval_method.value}, "
+                f"score: {src.score:.2f})"
             )
 
     # Show metadata
     console.print()
     console.print(
-        f"[dim]Query type: {response.query_type} | "
+        f"[dim]Mode: local | "
+        f"Query type: {response.query_type} | "
         f"Model: {response.model} | "
         f"Tokens: {response.tokens_used} | "
         f"Cost: ${response.cost_cents/100:.4f} | "
@@ -1604,6 +1864,309 @@ def oracle_query(
         ))
 
     console.print()
+
+
+# ============================================================================
+# Context Commands - Manage Oracle context tree
+# ============================================================================
+
+context_app = typer.Typer(name="context", help="Manage Oracle context tree (conversation history).")
+app.add_typer(context_app, name="context")
+
+
+@context_app.command("list")
+def context_list(
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """
+    List all context trees (conversations).
+
+    Shows all Oracle conversation trees with their current state.
+    Each tree represents an independent conversation branch.
+
+    Example:
+        vlt context list
+        vlt context list --json
+    """
+    import asyncio
+    from vlt.core.oracle_client import OracleClient
+    from rich.console import Console
+    from rich.table import Table
+    import json as json_lib
+
+    console = Console()
+    client = OracleClient()
+
+    if not client.token:
+        console.print("[yellow]No sync token configured. Context tree requires backend.[/yellow]")
+        console.print("[dim]Run: vlt config set-key <your-sync-token>[/dim]")
+        raise typer.Exit(code=1)
+
+    if not client.is_available():
+        console.print("[yellow]Backend unavailable. Context tree requires backend connection.[/yellow]")
+        raise typer.Exit(code=1)
+
+    trees = asyncio.run(client.get_trees())
+
+    if json_output:
+        output = [
+            {
+                "root_id": t.root_id,
+                "current_node_id": t.current_node_id,
+                "label": t.label,
+                "created_at": t.created_at.isoformat(),
+                "updated_at": t.updated_at.isoformat(),
+            }
+            for t in trees
+        ]
+        console.print(json_lib.dumps(output, indent=2))
+        return
+
+    if not trees:
+        console.print("[dim]No context trees found. Start a conversation with 'vlt oracle'.[/dim]")
+        return
+
+    table = Table(title="Oracle Context Trees")
+    table.add_column("Root ID", style="cyan")
+    table.add_column("Label", style="magenta")
+    table.add_column("Current Node", style="green")
+    table.add_column("Updated", style="dim")
+
+    for tree in trees:
+        table.add_row(
+            tree.root_id[:8] + "...",
+            tree.label or "-",
+            tree.current_node_id[:8] + "...",
+            tree.updated_at.strftime("%Y-%m-%d %H:%M"),
+        )
+
+    console.print(table)
+
+
+@context_app.command("new")
+def context_new(
+    label: str = typer.Option(None, "--label", "-l", help="Label for the new conversation"),
+):
+    """
+    Start a new conversation (create new context tree).
+
+    Creates a new conversation branch. The next oracle query will use
+    this new context instead of continuing the previous conversation.
+
+    Example:
+        vlt context new
+        vlt context new --label "Debugging auth"
+    """
+    import asyncio
+    from vlt.core.oracle_client import OracleClient
+    from rich.console import Console
+
+    console = Console()
+    client = OracleClient()
+
+    if not client.token:
+        console.print("[yellow]No sync token configured. Context tree requires backend.[/yellow]")
+        console.print("[dim]Run: vlt config set-key <your-sync-token>[/dim]")
+        raise typer.Exit(code=1)
+
+    if not client.is_available():
+        console.print("[yellow]Backend unavailable. Context tree requires backend connection.[/yellow]")
+        raise typer.Exit(code=1)
+
+    tree = asyncio.run(client.create_tree(label=label))
+
+    if tree:
+        console.print(f"[green]Created new context tree: {tree.root_id[:8]}...[/green]")
+        if label:
+            console.print(f"[dim]Label: {label}[/dim]")
+    else:
+        console.print("[yellow]Backend doesn't support context tree management yet.[/yellow]")
+        console.print("[dim]Conversation history is still available via 'vlt context history'[/dim]")
+
+
+@context_app.command("checkout")
+def context_checkout(
+    node_id: str = typer.Argument(..., help="Node ID to switch to (use 'vlt context list' to find IDs)"),
+):
+    """
+    Switch to a different node in the context tree.
+
+    This allows you to branch off from a previous point in the conversation.
+    Useful for exploring alternative lines of questioning.
+
+    Example:
+        vlt context checkout abc123
+    """
+    import asyncio
+    from vlt.core.oracle_client import OracleClient
+    from rich.console import Console
+
+    console = Console()
+    client = OracleClient()
+
+    if not client.token:
+        console.print("[yellow]No sync token configured.[/yellow]")
+        raise typer.Exit(code=1)
+
+    if not client.is_available():
+        console.print("[yellow]Backend unavailable.[/yellow]")
+        raise typer.Exit(code=1)
+
+    tree = asyncio.run(client.checkout(node_id))
+
+    if tree:
+        console.print(f"[green]Switched to node: {tree.current_node_id[:8]}...[/green]")
+    else:
+        console.print(f"[red]Failed to checkout node: {node_id}[/red]")
+        console.print("[dim]The node may not exist or the backend doesn't support this feature.[/dim]")
+
+
+@context_app.command("history")
+def context_history(
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+    limit: int = typer.Option(10, "--limit", "-n", help="Maximum messages to show"),
+):
+    """
+    Show conversation history.
+
+    Displays the recent conversation history from the backend.
+
+    Example:
+        vlt context history
+        vlt context history --limit 20
+        vlt context history --json
+    """
+    import asyncio
+    from vlt.core.oracle_client import OracleClient
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.markdown import Markdown
+    import json as json_lib
+
+    console = Console()
+    client = OracleClient()
+
+    if not client.token:
+        console.print("[yellow]No sync token configured.[/yellow]")
+        console.print("[dim]Run: vlt config set-key <your-sync-token>[/dim]")
+        raise typer.Exit(code=1)
+
+    if not client.is_available():
+        console.print("[yellow]Backend unavailable.[/yellow]")
+        raise typer.Exit(code=1)
+
+    messages = asyncio.run(client.get_history())
+
+    if json_output:
+        output = [
+            {
+                "role": m.role,
+                "content": m.content[:500] + "..." if len(m.content) > 500 else m.content,
+                "timestamp": m.timestamp.isoformat() if m.timestamp else None,
+            }
+            for m in messages[-limit:]
+        ]
+        console.print(json_lib.dumps(output, indent=2))
+        return
+
+    if not messages:
+        console.print("[dim]No conversation history found.[/dim]")
+        console.print("[dim]Start a conversation with 'vlt oracle <question>'.[/dim]")
+        return
+
+    console.print(f"[bold]Conversation History[/bold] (last {min(limit, len(messages))} messages)")
+    console.print()
+
+    for msg in messages[-limit:]:
+        if msg.role == "user":
+            console.print(Panel(
+                msg.content[:500] + "..." if len(msg.content) > 500 else msg.content,
+                title="[cyan]You[/cyan]",
+                border_style="cyan",
+            ))
+        else:
+            console.print(Panel(
+                Markdown(msg.content[:500] + "..." if len(msg.content) > 500 else msg.content),
+                title="[green]Oracle[/green]",
+                border_style="green",
+            ))
+        console.print()
+
+
+@context_app.command("clear")
+def context_clear(
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
+):
+    """
+    Clear conversation history.
+
+    Removes all conversation history from the backend.
+    This action cannot be undone.
+
+    Example:
+        vlt context clear
+        vlt context clear --force
+    """
+    import asyncio
+    from vlt.core.oracle_client import OracleClient
+    from rich.console import Console
+
+    console = Console()
+    client = OracleClient()
+
+    if not client.token:
+        console.print("[yellow]No sync token configured.[/yellow]")
+        raise typer.Exit(code=1)
+
+    if not client.is_available():
+        console.print("[yellow]Backend unavailable.[/yellow]")
+        raise typer.Exit(code=1)
+
+    if not force:
+        confirm = typer.confirm("This will clear all conversation history. Continue?")
+        if not confirm:
+            console.print("[dim]Aborted.[/dim]")
+            return
+
+    success = asyncio.run(client.clear_history())
+
+    if success:
+        console.print("[green]Conversation history cleared.[/green]")
+    else:
+        console.print("[red]Failed to clear history.[/red]")
+
+
+@context_app.command("cancel")
+def context_cancel():
+    """
+    Cancel the active Oracle query.
+
+    If an Oracle query is currently running, this will cancel it.
+
+    Example:
+        vlt context cancel
+    """
+    import asyncio
+    from vlt.core.oracle_client import OracleClient
+    from rich.console import Console
+
+    console = Console()
+    client = OracleClient()
+
+    if not client.token:
+        console.print("[yellow]No sync token configured.[/yellow]")
+        raise typer.Exit(code=1)
+
+    if not client.is_available():
+        console.print("[yellow]Backend unavailable.[/yellow]")
+        raise typer.Exit(code=1)
+
+    cancelled = asyncio.run(client.cancel_query())
+
+    if cancelled:
+        console.print("[green]Active query cancelled.[/green]")
+    else:
+        console.print("[dim]No active query to cancel.[/dim]")
 
 
 if __name__ == "__main__":

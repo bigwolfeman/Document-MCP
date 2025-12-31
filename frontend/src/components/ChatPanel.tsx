@@ -1,14 +1,26 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Send, Loader2, Info, Square } from 'lucide-react';
+import { Send, Loader2, Info, Square, GitBranch } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ChatMessage } from './ChatMessage';
 import { SlashCommandMenu } from './SlashCommandMenu';
+import { ContextTree } from './ContextTree';
 import { streamOracle, cancelOracle, exportConversationAsMarkdown, downloadAsFile, compactHistory } from '@/services/oracle';
 import { getModelSettings } from '@/services/models';
+import {
+  getContextTrees,
+  createTree,
+  deleteTree,
+  checkoutNode,
+  labelNode,
+  setCheckpoint,
+  pruneTree,
+  setActiveTree,
+} from '@/services/context';
 import type { OracleMessage, SlashCommand, OracleStreamChunk, SourceType } from '@/types/oracle';
 import type { ModelSettings } from '@/types/models';
+import type { ContextTreeData } from '@/types/context';
 import { useToast } from '@/hooks/useToast';
 import { Badge } from '@/components/ui/badge';
 
@@ -29,6 +41,10 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
   const [activeSources, setActiveSources] = useState<SourceType[]>(['vault', 'code', 'threads']);
   const [showCommandMenu, setShowCommandMenu] = useState(false);
   const [commandFilter, setCommandFilter] = useState('');
+  const [showContextTree, setShowContextTree] = useState(false);
+  const [contextTrees, setContextTrees] = useState<ContextTreeData[]>([]);
+  const [activeTreeId, setActiveTreeId] = useState<string | null>(null);
+  const [isLoadingTrees, setIsLoadingTrees] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -46,6 +62,108 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
     };
     loadModelSettings();
   }, []);
+
+  // Load context trees on mount
+  const loadContextTrees = useCallback(async () => {
+    setIsLoadingTrees(true);
+    try {
+      const response = await getContextTrees();
+      setContextTrees(response.trees);
+      setActiveTreeId(response.active_tree_id);
+    } catch (err) {
+      // Context tree API might not be implemented yet - fail silently
+      console.debug('Context trees not available:', err);
+    } finally {
+      setIsLoadingTrees(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadContextTrees();
+  }, [loadContextTrees]);
+
+  // Context tree handlers
+  const handleNewRoot = useCallback(async () => {
+    try {
+      const tree = await createTree();
+      await loadContextTrees();
+      setActiveTreeId(tree.root_id);
+      setMessages([]); // Clear messages for new tree
+      toast.success('New conversation tree created');
+    } catch (err) {
+      console.error('Failed to create tree:', err);
+      toast.error('Failed to create new conversation tree');
+    }
+  }, [loadContextTrees, toast]);
+
+  const handleCheckout = useCallback(async (nodeId: string) => {
+    try {
+      await checkoutNode(nodeId);
+      await loadContextTrees();
+      toast.success('Checked out conversation point');
+    } catch (err) {
+      console.error('Failed to checkout node:', err);
+      toast.error('Failed to checkout conversation point');
+    }
+  }, [loadContextTrees, toast]);
+
+  const handleLabel = useCallback(async (nodeId: string, label: string) => {
+    try {
+      await labelNode(nodeId, label);
+      await loadContextTrees();
+      toast.success('Label updated');
+    } catch (err) {
+      console.error('Failed to label node:', err);
+      toast.error('Failed to update label');
+    }
+  }, [loadContextTrees, toast]);
+
+  const handleCheckpointToggle = useCallback(async (nodeId: string, isCheckpoint: boolean) => {
+    try {
+      await setCheckpoint(nodeId, isCheckpoint);
+      await loadContextTrees();
+      toast.success(isCheckpoint ? 'Checkpoint set' : 'Checkpoint removed');
+    } catch (err) {
+      console.error('Failed to toggle checkpoint:', err);
+      toast.error('Failed to update checkpoint');
+    }
+  }, [loadContextTrees, toast]);
+
+  const handlePrune = useCallback(async (rootId: string) => {
+    try {
+      const result = await pruneTree(rootId);
+      await loadContextTrees();
+      toast.success(`Pruned ${result.pruned} nodes`);
+    } catch (err) {
+      console.error('Failed to prune tree:', err);
+      toast.error('Failed to prune tree');
+    }
+  }, [loadContextTrees, toast]);
+
+  const handleDeleteTree = useCallback(async (rootId: string) => {
+    try {
+      await deleteTree(rootId);
+      await loadContextTrees();
+      if (activeTreeId === rootId) {
+        setMessages([]);
+      }
+      toast.success('Conversation tree deleted');
+    } catch (err) {
+      console.error('Failed to delete tree:', err);
+      toast.error('Failed to delete tree');
+    }
+  }, [loadContextTrees, activeTreeId, toast]);
+
+  const handleSelectTree = useCallback(async (rootId: string) => {
+    try {
+      await setActiveTree(rootId);
+      setActiveTreeId(rootId);
+      toast.success('Switched to tree');
+    } catch (err) {
+      console.error('Failed to select tree:', err);
+      toast.error('Failed to switch tree');
+    }
+  }, [toast]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -163,8 +281,23 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
           }
         },
       },
+      {
+        name: 'tree',
+        description: 'Toggle context tree panel',
+        handler: () => {
+          setShowContextTree((prev) => !prev);
+          toast.success(`Context tree ${!showContextTree ? 'shown' : 'hidden'}`);
+        },
+      },
+      {
+        name: 'newbranch',
+        description: 'Start a new conversation branch',
+        handler: () => {
+          handleNewRoot();
+        },
+      },
     ],
-    [messages, activeSources, showSources, showThinking, toast, modelSettings, navigate, isLoading, handleStop]
+    [messages, activeSources, showSources, showThinking, showContextTree, toast, modelSettings, navigate, isLoading, handleStop, handleNewRoot]
   );
 
   const handleSubmit = async () => {
@@ -356,6 +489,15 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
               </Badge>
             )}
             <Button
+              variant={showContextTree ? "secondary" : "ghost"}
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setShowContextTree(!showContextTree)}
+              title={showContextTree ? "Hide context tree" : "Show context tree"}
+            >
+              <GitBranch className="h-4 w-4" />
+            </Button>
+            <Button
               variant="ghost"
               size="icon"
               className="h-8 w-8"
@@ -378,8 +520,28 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
         )}
       </div>
 
-      {/* Message List */}
-      <div className="flex-1 overflow-y-auto relative" ref={scrollRef}>
+      {/* Main content area with optional context tree */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Context Tree Panel */}
+        {showContextTree && (
+          <div className="w-64 border-r border-border flex-shrink-0 overflow-hidden">
+            <ContextTree
+              trees={contextTrees}
+              activeTreeId={activeTreeId}
+              onCheckout={handleCheckout}
+              onNewRoot={handleNewRoot}
+              onLabel={handleLabel}
+              onCheckpoint={handleCheckpointToggle}
+              onPrune={handlePrune}
+              onDeleteTree={handleDeleteTree}
+              onSelectTree={handleSelectTree}
+              isLoading={isLoadingTrees}
+            />
+          </div>
+        )}
+
+        {/* Message List */}
+        <div className="flex-1 overflow-y-auto relative" ref={scrollRef}>
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-8 text-center">
             <p className="text-base">Ask Oracle anything about your project</p>
@@ -406,6 +568,7 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
             )}
           </div>
         )}
+        </div>
       </div>
 
       {/* Input Area */}

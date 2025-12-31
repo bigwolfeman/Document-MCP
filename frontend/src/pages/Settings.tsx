@@ -19,9 +19,11 @@ import { SettingsSectionSkeleton } from '@/components/SettingsSectionSkeleton';
 import { getCurrentUser, getToken, logout, getStoredToken, isDemoSession, AUTH_TOKEN_CHANGED_EVENT } from '@/services/auth';
 import { getIndexHealth, rebuildIndex, type RebuildResponse } from '@/services/api';
 import { getModels, getModelSettings, saveModelSettings } from '@/services/models';
+import { getContextSettings, updateContextSettings } from '@/services/context';
 import type { User } from '@/types/user';
 import type { IndexHealth } from '@/types/search';
 import type { ModelInfo, ModelSettings } from '@/types/models';
+import type { ContextSettings } from '@/types/context';
 import { SystemLogs } from '@/components/SystemLogs';
 
 export function Settings() {
@@ -40,6 +42,11 @@ export function Settings() {
   const [modelSettings, setModelSettings] = useState<ModelSettings | null>(null);
   const [isSavingModels, setIsSavingModels] = useState(false);
   const [modelsSaved, setModelsSaved] = useState(false);
+
+  // Context settings state
+  const [contextSettings, setContextSettings] = useState<ContextSettings | null>(null);
+  const [isSavingContext, setIsSavingContext] = useState(false);
+  const [contextSaved, setContextSaved] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -96,6 +103,18 @@ export function Settings() {
           librarian_timeout: 1200,
           openrouter_api_key: null,
           openrouter_api_key_set: false,
+        });
+      }
+
+      // Load context settings
+      try {
+        const ctxSettings = await getContextSettings();
+        setContextSettings(ctxSettings);
+      } catch (err) {
+        console.debug('Context settings not available:', err);
+        // Set defaults if API fails
+        setContextSettings({
+          max_context_nodes: 30,
         });
       }
     } catch (err) {
@@ -180,6 +199,29 @@ export function Settings() {
       console.error('Error saving model settings:', err);
     } finally {
       setIsSavingModels(false);
+    }
+  };
+
+  const handleSaveContextSettings = async () => {
+    if (!contextSettings) return;
+    if (isDemoMode) {
+      setError('Demo mode is read-only. Sign in to save context settings.');
+      return;
+    }
+
+    setIsSavingContext(true);
+    setError(null);
+    setContextSaved(false);
+
+    try {
+      await updateContextSettings(contextSettings);
+      setContextSaved(true);
+      setTimeout(() => setContextSaved(false), 2000);
+    } catch (err) {
+      setError('Failed to save context settings');
+      console.error('Error saving context settings:', err);
+    } finally {
+      setIsSavingContext(false);
     }
   };
 
@@ -645,6 +687,67 @@ export function Settings() {
           <SettingsSectionSkeleton
             title="AI Models"
             description="Configure AI models for Oracle and Subagent operations"
+          />
+        )}
+
+        {/* Context Settings */}
+        {contextSettings ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Context Tree Settings</CardTitle>
+              <CardDescription>
+                Configure Oracle conversation tree behavior
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Max Context Nodes */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Max Context Nodes</label>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Maximum conversation nodes to keep per context tree. Older non-checkpoint nodes
+                  will be pruned when this limit is approached.
+                </p>
+                <div className="flex items-center gap-4">
+                  <Input
+                    type="number"
+                    min={5}
+                    max={100}
+                    value={contextSettings.max_context_nodes}
+                    onChange={(e) => {
+                      const value = Math.max(5, Math.min(100, parseInt(e.target.value) || 30));
+                      setContextSettings({ ...contextSettings, max_context_nodes: value });
+                    }}
+                    className="w-24"
+                  />
+                  <span className="text-sm text-muted-foreground">nodes (5-100)</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Default: 30 nodes. Higher values preserve more conversation history but use more storage.
+                  Checkpointed nodes are never automatically pruned.
+                </p>
+              </div>
+
+              {contextSaved && (
+                <Alert>
+                  <AlertDescription>
+                    Context settings saved successfully!
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <Button
+                onClick={handleSaveContextSettings}
+                disabled={isDemoMode || isSavingContext}
+              >
+                <Save className="h-4 w-4 mr-2" />
+                {isSavingContext ? 'Saving...' : 'Save Context Settings'}
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <SettingsSectionSkeleton
+            title="Context Tree Settings"
+            description="Configure Oracle conversation tree behavior"
           />
         )}
 

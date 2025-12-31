@@ -79,6 +79,7 @@ DDL_STATEMENTS: tuple[str, ...] = (
         subagent_provider TEXT NOT NULL DEFAULT 'google',
         thinking_enabled INTEGER NOT NULL DEFAULT 0,
         librarian_timeout INTEGER NOT NULL DEFAULT 1200,
+        max_context_nodes INTEGER NOT NULL DEFAULT 30,
         openrouter_api_key TEXT,
         created TEXT NOT NULL,
         updated TEXT NOT NULL
@@ -134,7 +135,7 @@ DDL_STATEMENTS: tuple[str, ...] = (
         tokenize='porter unicode61'
     )
     """,
-    # Oracle context persistence (009-oracle-agent T010)
+    # Oracle context persistence (009-oracle-agent T010) - Legacy flat context (deprecated)
     """
     CREATE TABLE IF NOT EXISTS oracle_contexts (
         id TEXT PRIMARY KEY,
@@ -157,6 +158,55 @@ DDL_STATEMENTS: tuple[str, ...] = (
     """,
     "CREATE INDEX IF NOT EXISTS idx_oracle_contexts_user_project ON oracle_contexts(user_id, project_id)",
     "CREATE INDEX IF NOT EXISTS idx_oracle_contexts_last_activity ON oracle_contexts(last_activity)",
+    # Context tree tables (009-oracle-agent - branching conversation history)
+    # Individual conversation nodes in the tree
+    """
+    CREATE TABLE IF NOT EXISTS context_nodes (
+        id TEXT PRIMARY KEY,
+        root_id TEXT NOT NULL,
+        parent_id TEXT,
+        user_id TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+
+        -- Content
+        question TEXT NOT NULL,
+        answer TEXT NOT NULL,
+        tool_calls_json TEXT DEFAULT '[]',
+        tokens_used INTEGER DEFAULT 0,
+        model_used TEXT,
+
+        -- Metadata
+        label TEXT,
+        is_checkpoint INTEGER DEFAULT 0,
+        is_root INTEGER DEFAULT 0,
+
+        FOREIGN KEY (parent_id) REFERENCES context_nodes(id) ON DELETE SET NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_context_nodes_user_project ON context_nodes(user_id, project_id)",
+    "CREATE INDEX IF NOT EXISTS idx_context_nodes_root ON context_nodes(root_id)",
+    "CREATE INDEX IF NOT EXISTS idx_context_nodes_parent ON context_nodes(parent_id)",
+    "CREATE INDEX IF NOT EXISTS idx_context_nodes_checkpoint ON context_nodes(user_id, project_id, is_checkpoint)",
+    # Tree metadata (one per root)
+    """
+    CREATE TABLE IF NOT EXISTS context_trees (
+        root_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        current_node_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_activity TEXT NOT NULL,
+        node_count INTEGER DEFAULT 1,
+        max_nodes INTEGER DEFAULT 30,
+        label TEXT,
+
+        FOREIGN KEY (root_id) REFERENCES context_nodes(id) ON DELETE CASCADE,
+        FOREIGN KEY (current_node_id) REFERENCES context_nodes(id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_context_trees_user_project ON context_trees(user_id, project_id)",
+    "CREATE INDEX IF NOT EXISTS idx_context_trees_last_activity ON context_trees(last_activity)",
 )
 
 # Migration statements for existing databases
@@ -165,6 +215,8 @@ MIGRATION_STATEMENTS: tuple[str, ...] = (
     "ALTER TABLE user_settings ADD COLUMN openrouter_api_key TEXT",
     # Add librarian_timeout column if it doesn't exist (default 1200 = 20 minutes)
     "ALTER TABLE user_settings ADD COLUMN librarian_timeout INTEGER NOT NULL DEFAULT 1200",
+    # Add max_context_nodes column if it doesn't exist (default 30 nodes per tree)
+    "ALTER TABLE user_settings ADD COLUMN max_context_nodes INTEGER NOT NULL DEFAULT 30",
 )
 
 

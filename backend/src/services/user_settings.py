@@ -35,7 +35,8 @@ class UserSettingsService:
             cursor = conn.execute(
                 """
                 SELECT oracle_model, oracle_provider, subagent_model,
-                       subagent_provider, thinking_enabled, librarian_timeout, openrouter_api_key
+                       subagent_provider, thinking_enabled, librarian_timeout,
+                       max_context_nodes, openrouter_api_key
                 FROM user_settings
                 WHERE user_id = ?
                 """,
@@ -51,6 +52,9 @@ class UserSettingsService:
                 # Handle librarian_timeout - may be None for legacy rows
                 librarian_timeout = row["librarian_timeout"] if row["librarian_timeout"] is not None else 1200
 
+                # Handle max_context_nodes - may be None for legacy rows
+                max_context_nodes = row["max_context_nodes"] if row["max_context_nodes"] is not None else 30
+
                 return ModelSettings(
                     oracle_model=row["oracle_model"],
                     oracle_provider=ModelProvider(row["oracle_provider"]),
@@ -58,6 +62,7 @@ class UserSettingsService:
                     subagent_provider=ModelProvider(row["subagent_provider"]),
                     thinking_enabled=bool(row["thinking_enabled"]),
                     librarian_timeout=librarian_timeout,
+                    max_context_nodes=max_context_nodes,
                     openrouter_api_key=None,  # Never return the actual key
                     openrouter_api_key_set=has_api_key
                 )
@@ -171,6 +176,34 @@ class UserSettingsService:
         timeout_seconds = max(60, min(timeout_seconds, 3600))
         self.update_settings(user_id=user_id, librarian_timeout=timeout_seconds)
 
+    def get_max_context_nodes(self, user_id: str) -> int:
+        """
+        Get user's configured max context nodes per tree.
+
+        This is used by ContextTreeService when creating new trees or pruning.
+        Returns the configured limit or the default (30 nodes).
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            Max nodes per tree (5-100, default 30)
+        """
+        settings = self.get_settings(user_id)
+        return settings.max_context_nodes
+
+    def set_max_context_nodes(self, user_id: str, max_nodes: int) -> None:
+        """
+        Set user's max context nodes per tree.
+
+        Args:
+            user_id: User identifier
+            max_nodes: Max nodes per tree (5-100)
+        """
+        # Clamp to valid range
+        max_nodes = max(5, min(max_nodes, 100))
+        self.update_settings(user_id=user_id, max_context_nodes=max_nodes)
+
     def set_subagent_model(self, user_id: str, model: str, provider: Optional["ModelProvider"] = None) -> None:
         """
         Set user's preferred subagent model.
@@ -195,6 +228,7 @@ class UserSettingsService:
         subagent_provider: Optional[ModelProvider] = None,
         thinking_enabled: Optional[bool] = None,
         librarian_timeout: Optional[int] = None,
+        max_context_nodes: Optional[int] = None,
         openrouter_api_key: Optional[str] = None
     ) -> ModelSettings:
         """
@@ -208,6 +242,7 @@ class UserSettingsService:
             subagent_provider: Subagent provider (optional)
             thinking_enabled: Enable thinking mode (optional)
             librarian_timeout: Timeout in seconds for Librarian operations (optional, 60-3600)
+            max_context_nodes: Max nodes per context tree (optional, 5-100)
             openrouter_api_key: OpenRouter API key (optional, empty string to clear)
 
         Returns:
@@ -235,6 +270,11 @@ class UserSettingsService:
             if librarian_timeout is not None:
                 new_librarian_timeout = max(60, min(librarian_timeout, 3600))
 
+            # Clamp max_context_nodes to valid range if provided
+            new_max_context_nodes = current.max_context_nodes
+            if max_context_nodes is not None:
+                new_max_context_nodes = max(5, min(max_context_nodes, 100))
+
             # Apply updates (only non-None values)
             updated = ModelSettings(
                 oracle_model=oracle_model if oracle_model is not None else current.oracle_model,
@@ -243,6 +283,7 @@ class UserSettingsService:
                 subagent_provider=subagent_provider if subagent_provider is not None else current.subagent_provider,
                 thinking_enabled=thinking_enabled if thinking_enabled is not None else current.thinking_enabled,
                 librarian_timeout=new_librarian_timeout,
+                max_context_nodes=new_max_context_nodes,
                 openrouter_api_key=None,  # Never return the key
                 openrouter_api_key_set=new_api_key is not None and len(new_api_key) > 0
             )
@@ -256,8 +297,9 @@ class UserSettingsService:
                     INSERT INTO user_settings (
                         user_id, oracle_model, oracle_provider,
                         subagent_model, subagent_provider, thinking_enabled,
-                        librarian_timeout, openrouter_api_key, created, updated
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        librarian_timeout, max_context_nodes, openrouter_api_key,
+                        created, updated
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(user_id) DO UPDATE SET
                         oracle_model = excluded.oracle_model,
                         oracle_provider = excluded.oracle_provider,
@@ -265,6 +307,7 @@ class UserSettingsService:
                         subagent_provider = excluded.subagent_provider,
                         thinking_enabled = excluded.thinking_enabled,
                         librarian_timeout = excluded.librarian_timeout,
+                        max_context_nodes = excluded.max_context_nodes,
                         openrouter_api_key = excluded.openrouter_api_key,
                         updated = excluded.updated
                     """,
@@ -276,6 +319,7 @@ class UserSettingsService:
                         updated.subagent_provider.value,
                         int(updated.thinking_enabled),
                         updated.librarian_timeout,
+                        updated.max_context_nodes,
                         new_api_key,
                         now,
                         now

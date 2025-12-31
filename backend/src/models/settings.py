@@ -39,6 +39,12 @@ class ModelSettings(BaseModel):
         le=3600,
         description="Timeout in seconds for Librarian subagent tasks (default: 1200 = 20 minutes, max: 3600 = 1 hour)"
     )
+    max_context_nodes: int = Field(
+        default=30,
+        ge=5,
+        le=100,
+        description="Maximum context nodes to keep per conversation tree before pruning (default: 30)"
+    )
     openrouter_api_key: Optional[str] = Field(
         default=None,
         description="User's OpenRouter API key for accessing paid models"
@@ -86,6 +92,12 @@ class ModelSettingsUpdateRequest(BaseModel):
         ge=60,
         le=3600,
         description="Timeout in seconds for Librarian subagent tasks (60-3600)"
+    )
+    max_context_nodes: Optional[int] = Field(
+        default=None,
+        ge=5,
+        le=100,
+        description="Maximum context nodes per conversation tree (5-100)"
     )
     openrouter_api_key: Optional[str] = Field(
         default=None,
