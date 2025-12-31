@@ -1,0 +1,550 @@
+openapi: 3.0.3
+info:
+  title: Oracle Agent API
+  description: |
+    API endpoints for the Oracle Agent - an AI project manager that answers questions
+    about codebases using tool calling and persistent context.
+  version: 1.0.0
+
+servers:
+  - url: /api
+    description: Backend API
+
+paths:
+  /oracle:
+    post:
+      summary: Ask Oracle (non-streaming)
+      description: |
+        Send a question to the Oracle and receive a complete response.
+        The Oracle uses tools to gather context before answering.
+      operationId: askOracle
+      tags: [Oracle]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OracleRequest'
+      responses:
+        '200':
+          description: Oracle response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OracleResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /oracle/stream:
+    post:
+      summary: Ask Oracle (streaming)
+      description: |
+        Send a question and receive streamed response via Server-Sent Events.
+        Chunks include thinking, tool calls, content, and completion events.
+      operationId: askOracleStream
+      tags: [Oracle]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OracleRequest'
+      responses:
+        '200':
+          description: SSE stream of oracle chunks
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/OracleStreamChunk'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /oracle/context:
+    get:
+      summary: Get current context
+      description: |
+        Retrieve the current Oracle context for the user's active project.
+        Includes compressed summary, recent exchanges, and token usage.
+      operationId: getOracleContext
+      tags: [Oracle]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project_id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Project to get context for (uses default if not specified)
+      responses:
+        '200':
+          description: Current context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OracleContextResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No context found
+
+    delete:
+      summary: Clear context
+      description: |
+        Clear the Oracle context for a project. Starts fresh conversation.
+      operationId: clearOracleContext
+      tags: [Oracle]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project_id
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Context cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+                  message:
+                    type: string
+                    example: "Context cleared"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /threads:
+    post:
+      summary: Create thread
+      description: |
+        Create a new thread for the Oracle to use as memory.
+        Called when Oracle decides to save research or decisions.
+      operationId: createThread
+      tags: [Threads]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateThreadRequest'
+      responses:
+        '201':
+          description: Thread created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Thread'
+        '400':
+          description: Invalid request
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /threads/{thread_id}/entries:
+    post:
+      summary: Add thread entry
+      description: |
+        Add an entry to a thread. Used by Oracle's thread_push tool.
+      operationId: addThreadEntry
+      tags: [Threads]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: thread_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddEntryRequest'
+      responses:
+        '201':
+          description: Entry added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreadEntry'
+        '404':
+          description: Thread not found
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /threads/seek:
+    get:
+      summary: Semantic search threads
+      description: |
+        Search across thread entries using vector similarity.
+        Used by Oracle's thread_seek tool.
+      operationId: seekThreads
+      tags: [Threads]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+          description: Search query
+        - name: project_id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Scope to project
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreadSeekResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    OracleRequest:
+      type: object
+      required:
+        - question
+      properties:
+        question:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: The question to ask the Oracle
+        project_id:
+          type: string
+          description: Project context (uses default if not specified)
+        sources:
+          type: array
+          items:
+            type: string
+            enum: [vault, code, threads]
+          description: Sources to search (default all)
+        max_tokens:
+          type: integer
+          minimum: 100
+          maximum: 16000
+          default: 4000
+          description: Max tokens in response
+        model:
+          type: string
+          description: Override default model
+        thinking:
+          type: boolean
+          default: false
+          description: Include thinking/reasoning in response
+
+    OracleResponse:
+      type: object
+      properties:
+        answer:
+          type: string
+          description: The Oracle's answer
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceReference'
+        tool_calls:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolCallSummary'
+          description: Tools used to gather context
+        tokens_used:
+          type: integer
+        model_used:
+          type: string
+        context_tokens_remaining:
+          type: integer
+          description: Tokens left in context budget
+
+    OracleStreamChunk:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [thinking, tool_call, tool_result, content, source, done, error]
+        content:
+          type: string
+          description: Chunk content (for thinking, content types)
+        tool_call:
+          $ref: '#/components/schemas/ToolCallSummary'
+          description: Tool being called (for tool_call type)
+        tool_result:
+          type: string
+          description: Tool result (for tool_result type)
+        source:
+          $ref: '#/components/schemas/SourceReference'
+          description: Source reference (for source type)
+        tokens_used:
+          type: integer
+          description: Total tokens (for done type)
+        error:
+          type: string
+          description: Error message (for error type)
+
+    OracleContextResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        session_start:
+          type: string
+          format: date-time
+        last_activity:
+          type: string
+          format: date-time
+        token_budget:
+          type: integer
+        tokens_used:
+          type: integer
+        tokens_remaining:
+          type: integer
+        compressed_summary:
+          type: string
+          description: Summary of older exchanges
+        recent_exchanges:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExchangeSummary'
+        key_decisions:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [active, suspended, closed]
+
+    ExchangeSummary:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content_preview:
+          type: string
+          maxLength: 200
+        timestamp:
+          type: string
+          format: date-time
+        tool_count:
+          type: integer
+
+    SourceReference:
+      type: object
+      properties:
+        path:
+          type: string
+          description: File path, note path, or thread reference
+        type:
+          type: string
+          enum: [code, vault, thread, definition, reference]
+        line:
+          type: integer
+          description: Line number (for code)
+        snippet:
+          type: string
+          maxLength: 500
+        score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+
+    ToolCallSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        arguments_preview:
+          type: string
+          maxLength: 200
+        status:
+          type: string
+          enum: [pending, success, error]
+        duration_ms:
+          type: integer
+
+    CreateThreadRequest:
+      type: object
+      required:
+        - thread_id
+        - project_id
+        - name
+      properties:
+        thread_id:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          maxLength: 64
+        project_id:
+          type: string
+        name:
+          type: string
+          maxLength: 256
+        initial_entry:
+          type: string
+          description: Optional first entry content
+
+    AddEntryRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 100000
+        author:
+          type: string
+          enum: [user, claude, oracle, librarian]
+          default: oracle
+        entry_type:
+          type: string
+          enum: [thought, decision, research, insight]
+          default: thought
+
+    Thread:
+      type: object
+      properties:
+        thread_id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        entry_count:
+          type: integer
+
+    ThreadEntry:
+      type: object
+      properties:
+        entry_id:
+          type: string
+        thread_id:
+          type: string
+        sequence_id:
+          type: integer
+        content:
+          type: string
+        author:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    ThreadSeekResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ThreadSeekResult'
+        total:
+          type: integer
+
+    ThreadSeekResult:
+      type: object
+      properties:
+        thread_id:
+          type: string
+        entry_id:
+          type: string
+        content:
+          type: string
+        author:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        score:
+          type: number
+          format: float
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: string
+                example: "Not authenticated"
+
+    RateLimited:
+      description: Too many requests
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: string
+                example: "Rate limit exceeded"
+              retry_after:
+                type: integer
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: string
+              error_id:
+                type: string
+
+tags:
+  - name: Oracle
+    description: Oracle agent endpoints
+  - name: Threads
+    description: Thread memory endpoints
