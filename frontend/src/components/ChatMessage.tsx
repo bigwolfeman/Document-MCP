@@ -59,6 +59,7 @@ export function ChatMessage({
       case 'code':
         return <FileCode className="h-3 w-3" />;
       case 'thread':
+      case 'threads':
         return <MessageSquare className="h-3 w-3" />;
       default:
         return <FileCode className="h-3 w-3" />;

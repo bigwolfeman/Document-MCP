@@ -1,4 +1,4 @@
-export type SourceType = 'vault' | 'code' | 'thread';
+export type SourceType = 'vault' | 'code' | 'threads';
 export type StreamEventType = 'status' | 'thinking' | 'content' | 'source' | 'done' | 'error';
 
 /**

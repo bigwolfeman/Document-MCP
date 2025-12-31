@@ -1,5 +1,6 @@
 /**
  * Model provider types and model selection configuration
+ * Note: Field names match backend snake_case (Pydantic default)
  */
 
 export type ModelProvider = 'openrouter' | 'google';
@@ -8,18 +9,18 @@ export interface ModelInfo {
   id: string;
   name: string;
   provider: ModelProvider;
-  isFree: boolean;
-  supportsThinking: boolean;
-  contextLength: number;
+  is_free: boolean;
+  supports_thinking: boolean;
+  context_length: number | null;
   description?: string;
 }
 
 export interface ModelSettings {
-  oracleModel: string;
-  oracleProvider: ModelProvider;
-  subagentModel: string;
-  subagentProvider: ModelProvider;
-  thinkingEnabled: boolean;
+  oracle_model: string;
+  oracle_provider: ModelProvider;
+  subagent_model: string;
+  subagent_provider: ModelProvider;
+  thinking_enabled: boolean;
 }
 
 export interface ModelsResponse {

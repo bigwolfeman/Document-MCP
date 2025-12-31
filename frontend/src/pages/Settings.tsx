@@ -88,11 +88,11 @@ export function Settings() {
         console.error('Error loading model settings:', err);
         // Set defaults if API fails
         setModelSettings({
-          oracleModel: 'deepseek/deepseek-chat',
-          oracleProvider: 'openrouter',
-          subagentModel: 'google/gemini-2.0-flash-exp:free',
-          subagentProvider: 'openrouter',
-          thinkingEnabled: false,
+          oracle_model: 'deepseek/deepseek-chat',
+          oracle_provider: 'openrouter',
+          subagent_model: 'google/gemini-2.0-flash-exp:free',
+          subagent_provider: 'openrouter',
+          thinking_enabled: false,
         });
       }
     } catch (err) {
@@ -429,8 +429,8 @@ export function Settings() {
                   Primary model for answering questions and synthesizing context
                 </p>
                 <Select
-                  value={modelSettings.oracleModel}
-                  onValueChange={(value) => setModelSettings({ ...modelSettings, oracleModel: value })}
+                  value={modelSettings.oracle_model}
+                  onValueChange={(value) => setModelSettings({ ...modelSettings, oracle_model: value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select a model" />
@@ -444,7 +444,7 @@ export function Settings() {
                             <SelectItem key={model.id} value={model.id}>
                               <div className="flex items-center gap-2">
                                 <span>{model.name}</span>
-                                {model.isFree && (
+                                {model.is_free && (
                                   <Badge variant="secondary" className="text-xs">FREE</Badge>
                                 )}
                               </div>
@@ -455,10 +455,10 @@ export function Settings() {
                     ))}
                   </SelectContent>
                 </Select>
-                {getModelInfo(modelSettings.oracleModel) && (
+                {getModelInfo(modelSettings.oracle_model) && (
                   <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1">
-                    <span>Context: {formatContextLength(getModelInfo(modelSettings.oracleModel)!.contextLength)}</span>
-                    {getModelInfo(modelSettings.oracleModel)!.isFree && (
+                    <span>Context: {formatContextLength(getModelInfo(modelSettings.oracle_model)!.context_length!)}</span>
+                    {getModelInfo(modelSettings.oracle_model)!.is_free && (
                       <Badge variant="outline" className="text-xs">Free Tier</Badge>
                     )}
                   </div>
@@ -474,8 +474,8 @@ export function Settings() {
                   Model for parallel research and code analysis tasks
                 </p>
                 <Select
-                  value={modelSettings.subagentModel}
-                  onValueChange={(value) => setModelSettings({ ...modelSettings, subagentModel: value })}
+                  value={modelSettings.subagent_model}
+                  onValueChange={(value) => setModelSettings({ ...modelSettings, subagent_model: value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select a model" />
@@ -489,7 +489,7 @@ export function Settings() {
                             <SelectItem key={model.id} value={model.id}>
                               <div className="flex items-center gap-2">
                                 <span>{model.name}</span>
-                                {model.isFree && (
+                                {model.is_free && (
                                   <Badge variant="secondary" className="text-xs">FREE</Badge>
                                 )}
                               </div>
@@ -500,10 +500,10 @@ export function Settings() {
                     ))}
                   </SelectContent>
                 </Select>
-                {getModelInfo(modelSettings.subagentModel) && (
+                {getModelInfo(modelSettings.subagent_model) && (
                   <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1">
-                    <span>Context: {formatContextLength(getModelInfo(modelSettings.subagentModel)!.contextLength)}</span>
-                    {getModelInfo(modelSettings.subagentModel)!.isFree && (
+                    <span>Context: {formatContextLength(getModelInfo(modelSettings.subagent_model)!.context_length!)}</span>
+                    {getModelInfo(modelSettings.subagent_model)!.is_free && (
                       <Badge variant="outline" className="text-xs">Free Tier</Badge>
                     )}
                   </div>
@@ -526,9 +526,9 @@ export function Settings() {
                       <TooltipTrigger asChild>
                         <div>
                           <Switch
-                            checked={modelSettings.thinkingEnabled}
+                            checked={modelSettings.thinking_enabled}
                             onCheckedChange={(checked) =>
-                              setModelSettings({ ...modelSettings, thinkingEnabled: checked })
+                              setModelSettings({ ...modelSettings, thinking_enabled: checked })
                             }
                           />
                         </div>

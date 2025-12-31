@@ -1,11 +1,14 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Send, Loader2, Settings, Info } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Send, Loader2, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ChatMessage } from './ChatMessage';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { streamOracle, exportConversationAsMarkdown, downloadAsFile, compactHistory } from '@/services/oracle';
-import type { OracleMessage, SlashCommand, OracleStreamChunk, SourceType, RetrievalResult } from '@/types/oracle';
+import { getModelSettings } from '@/services/models';
+import type { OracleMessage, SlashCommand, OracleStreamChunk, SourceType } from '@/types/oracle';
+import type { ModelSettings } from '@/types/models';
 import { useToast } from '@/hooks/useToast';
 import { Badge } from '@/components/ui/badge';
 
@@ -15,11 +18,12 @@ interface ChatPanelProps {
 }
 
 export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) {
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<OracleMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
-  const [currentModel, setCurrentModel] = useState('');
+  const [modelSettings, setModelSettings] = useState<ModelSettings | null>(null);
   const [showThinking, setShowThinking] = useState(true);
   const [showSources, setShowSources] = useState(true);
   const [activeSources, setActiveSources] = useState<SourceType[]>(['vault', 'code', 'threads']);
@@ -29,6 +33,19 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const toast = useToast();
+
+  // Load model settings on mount
+  useEffect(() => {
+    const loadModelSettings = async () => {
+      try {
+        const settings = await getModelSettings();
+        setModelSettings(settings);
+      } catch (err) {
+        console.error('Failed to load model settings:', err);
+      }
+    };
+    loadModelSettings();
+  }, []);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -77,9 +94,10 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
       },
       {
         name: 'models',
-        description: 'Quick switch model (current: auto)',
+        description: `Configure AI model (current: ${modelSettings?.oracle_model?.split('/').pop() || 'default'})`,
         handler: () => {
-          toast.info('Model selection coming soon');
+          navigate('/settings');
+          toast.info('Navigate to Settings → AI Models to change model');
         },
       },
       {
@@ -109,7 +127,7 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
         },
       },
     ],
-    [messages, activeSources, showSources, showThinking, toast]
+    [messages, activeSources, showSources, showThinking, toast, modelSettings, navigate]
   );
 
   const handleSubmit = async () => {
@@ -254,9 +272,14 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {currentModel && (
-              <Badge variant="outline" className="text-xs">
-                {currentModel}
+            {modelSettings?.oracle_model && (
+              <Badge
+                variant="outline"
+                className="text-xs cursor-pointer hover:bg-accent"
+                onClick={() => navigate('/settings')}
+                title="Click to change model"
+              >
+                {modelSettings.oracle_model.split('/').pop()?.replace(':free', '') || 'default'}
               </Badge>
             )}
             <Button
