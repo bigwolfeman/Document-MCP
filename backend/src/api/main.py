@@ -21,7 +21,7 @@ from starlette.responses import Response
 from fastmcp.server.http import StreamableHTTPSessionManager, set_http_request
 from fastapi.responses import FileResponse
 
-from .routes import auth, index, notes, search, graph, demo, system, rag, tts, models, oracle, threads
+from .routes import auth, index, notes, search, graph, demo, system, rag, tts, models, oracle, oracle_context, threads
 from ..mcp.server import mcp
 from ..services.seed import init_and_seed
 from ..services.config import get_config
@@ -116,6 +116,7 @@ app.include_router(rag.router, tags=["rag"])
 app.include_router(tts.router, tags=["tts"])
 app.include_router(models.router, tags=["models"])
 app.include_router(oracle.router, tags=["oracle"])
+app.include_router(oracle_context.router, tags=["oracle-context"])
 app.include_router(threads.router, tags=["threads"])
 
 

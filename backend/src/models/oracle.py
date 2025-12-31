@@ -27,6 +27,8 @@ class OracleRequest(BaseModel):
     model: Optional[str] = Field(None, description="Override LLM model (e.g., 'anthropic/claude-3.5-sonnet')")
     thinking: bool = Field(False, description="Enable thinking mode (append :thinking suffix)")
     max_tokens: int = Field(16000, ge=1000, le=100000, description="Maximum tokens for context assembly")
+    context_id: Optional[str] = Field(None, description="Context ID to continue conversation (None = create new)")
+    project_id: Optional[str] = Field(None, description="Project ID for context scoping")
 
 
 class OracleStreamChunk(BaseModel):
@@ -40,6 +42,7 @@ class OracleStreamChunk(BaseModel):
     tool_result: Optional[str] = Field(None, description="Tool result (tool_result chunks)")
     tokens_used: Optional[int] = Field(None, description="Total tokens used (done chunk only)")
     model_used: Optional[str] = Field(None, description="Model used (done chunk only)")
+    context_id: Optional[str] = Field(None, description="Context ID for conversation persistence (done chunk)")
     error: Optional[str] = Field(None, description="Error message (error chunk only)")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
@@ -50,6 +53,7 @@ class OracleResponse(BaseModel):
     sources: List[SourceReference] = Field(default_factory=list, description="Source citations")
     tokens_used: Optional[int] = Field(None, description="Total tokens used")
     model_used: Optional[str] = Field(None, description="Model that generated the response")
+    context_id: Optional[str] = Field(None, description="Context ID for conversation persistence")
     retrieval_traces: Optional[Dict[str, Any]] = Field(None, description="Retrieval debug info (if explain=True)")
 
 

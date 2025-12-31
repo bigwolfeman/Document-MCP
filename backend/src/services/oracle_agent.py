@@ -2,6 +2,12 @@
 
 This replaces the subprocess-based OracleBridge with a proper agent implementation
 that uses OpenRouter function calling for tool execution.
+
+Context persistence is handled by OracleContextService, which:
+- Loads existing context based on user_id + project_id
+- Saves exchanges after each response
+- Handles compression when approaching token budget
+- Builds message history from stored exchanges
 """
 
 from __future__ import annotations
@@ -12,7 +18,7 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 import httpx
@@ -26,6 +32,7 @@ from ..models.oracle_context import (
     ToolCall,
     ToolCallStatus,
 )
+from .oracle_context_service import OracleContextService, get_context_service
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +254,7 @@ class OracleAgent:
         subagent_model: Optional[str] = None,
         project_id: Optional[str] = None,
         user_id: Optional[str] = None,
+        context_service: Optional[OracleContextService] = None,
     ):
         """Initialize the Oracle agent.
 
@@ -256,14 +264,17 @@ class OracleAgent:
             subagent_model: Model for Librarian subagent (from user settings)
             project_id: Project context for tool scoping
             user_id: User ID for context tracking
+            context_service: OracleContextService for persistence (uses singleton if None)
         """
         self.api_key = api_key
         self.model = model or self.DEFAULT_MODEL
         self.subagent_model = subagent_model or self.DEFAULT_SUBAGENT_MODEL
-        self.project_id = project_id
+        self.project_id = project_id or "default"
         self.user_id = user_id
         self._context: Optional[OracleContext] = None
         self._collected_sources: List[SourceReference] = []
+        self._collected_tool_calls: List[ToolCall] = []
+        self._context_service = context_service or get_context_service()
 
         # Cancellation support
         self._cancelled = False
@@ -298,6 +309,7 @@ class OracleAgent:
         stream: bool = True,
         thinking: bool = False,
         max_tokens: int = 4000,
+        project_id: Optional[str] = None,
     ) -> AsyncGenerator[OracleStreamChunk, None]:
         """Run agent loop, yielding streaming chunks.
 
@@ -307,6 +319,7 @@ class OracleAgent:
             stream: Whether to stream response
             thinking: Enable thinking/reasoning mode
             max_tokens: Maximum tokens in response
+            project_id: Project ID for context scoping (overrides init value)
 
         Yields:
             OracleStreamChunk objects for each piece of the response
@@ -315,11 +328,31 @@ class OracleAgent:
         self.reset_cancellation()
         self.user_id = user_id
         self._collected_sources = []
+        self._collected_tool_calls = []
+
+        # Use provided project_id or fall back to init value
+        effective_project_id = project_id or self.project_id or "default"
 
         # Check cancellation at start
         if self._cancelled:
             yield OracleStreamChunk(type="error", error="Cancelled by user")
             return
+
+        # Load or create context for this user+project pair
+        try:
+            self._context = self._context_service.get_or_create_context(
+                user_id=user_id,
+                project_id=effective_project_id,
+                token_budget=max_tokens,
+            )
+            logger.debug(
+                f"Loaded context {self._context.id} for {user_id}/{effective_project_id} "
+                f"(tokens: {self._context.tokens_used}/{self._context.token_budget})"
+            )
+        except Exception as e:
+            logger.error(f"Failed to load context: {e}")
+            # Continue without context persistence
+            self._context = None
 
         # Get services
         tool_executor = _get_tool_executor()
@@ -329,15 +362,34 @@ class OracleAgent:
         system_prompt = prompt_loader.load(
             "oracle/system.md",
             {
-                "project_id": self.project_id or "Not specified",
+                "project_id": effective_project_id,
                 "user_id": user_id,
             },
         )
 
         messages: List[Dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": question},
         ]
+
+        # Add context history from stored exchanges
+        if self._context and self._context.recent_exchanges:
+            # Add compressed summary as system context if available
+            if self._context.compressed_summary:
+                messages.append({
+                    "role": "system",
+                    "content": f"<conversation_summary>\n{self._context.compressed_summary}\n</conversation_summary>",
+                })
+
+            # Add recent exchanges to message history
+            for exchange in self._context.recent_exchanges:
+                if exchange.role == ExchangeRole.USER:
+                    messages.append({"role": "user", "content": exchange.content})
+                elif exchange.role == ExchangeRole.ASSISTANT:
+                    messages.append({"role": "assistant", "content": exchange.content})
+                # Note: Tool exchanges are embedded in the conversation flow
+
+        # Add current question
+        messages.append({"role": "user", "content": question})
 
         # Get tool definitions
         tools = tool_executor.get_tool_schemas(agent="oracle")
@@ -347,6 +399,9 @@ class OracleAgent:
             type="thinking",
             content="Analyzing question and gathering context...",
         )
+
+        # Track the original question for context saving
+        self._current_question = question
 
         # Agent loop
         for turn in range(self.MAX_TURNS):
@@ -572,6 +627,12 @@ class OracleAgent:
                 # Final response without tool calls
                 messages.append({"role": "assistant", "content": content_buffer})
 
+                # Save the exchange to persistent context
+                context_id = self._save_exchange(
+                    question=getattr(self, '_current_question', ''),
+                    answer=content_buffer,
+                )
+
                 # Yield sources
                 for source in self._collected_sources:
                     yield OracleStreamChunk(
@@ -579,11 +640,12 @@ class OracleAgent:
                         source=source,
                     )
 
-                # Done
+                # Done with context_id for frontend reference
                 yield OracleStreamChunk(
                     type="done",
                     tokens_used=None,  # Could extract from response headers
                     model_used=self.model,
+                    context_id=context_id,
                 )
 
     async def _process_response(
@@ -662,6 +724,14 @@ class OracleAgent:
 
                 messages.append({"role": "assistant", "content": content})
 
+                # Save the exchange to persistent context
+                usage = data.get("usage", {})
+                context_id = self._save_exchange(
+                    question=getattr(self, '_current_question', ''),
+                    answer=content,
+                    tokens_used=usage.get("total_tokens"),
+                )
+
                 # Yield sources
                 for source in self._collected_sources:
                     yield OracleStreamChunk(
@@ -670,11 +740,11 @@ class OracleAgent:
                     )
 
                 # Done - only when no XML tool calls were found
-                usage = data.get("usage", {})
                 yield OracleStreamChunk(
                     type="done",
                     tokens_used=usage.get("total_tokens"),
                     model_used=self.model,
+                    context_id=context_id,
                 )
 
     async def _execute_tools(
@@ -801,6 +871,17 @@ class OracleAgent:
                 # Extract sources from successful result
                 self._extract_sources_from_result(result.name, result.result)
 
+                # Collect tool call for context persistence
+                self._collected_tool_calls.append(
+                    ToolCall(
+                        id=result.call_id,
+                        name=result.name,
+                        arguments=result.arguments,
+                        result=result.result[:2000] if len(result.result) > 2000 else result.result,
+                        status=ToolCallStatus.SUCCESS,
+                    )
+                )
+
                 # Add tool result to messages
                 messages.append({
                     "role": "tool",
@@ -818,6 +899,17 @@ class OracleAgent:
                 yield OracleStreamChunk(
                     type="tool_result",
                     tool_result=error_content,
+                )
+
+                # Collect failed tool call for context persistence
+                self._collected_tool_calls.append(
+                    ToolCall(
+                        id=result.call_id,
+                        name=result.name,
+                        arguments=result.arguments,
+                        result=result.error,
+                        status=ToolCallStatus.ERROR,
+                    )
                 )
 
                 # Add error result to messages so agent can handle it
@@ -1056,6 +1148,83 @@ class OracleAgent:
     def _estimate_tokens(self, text: str) -> int:
         """Estimate token count for a string (rough: 4 chars per token)."""
         return len(text) // 4
+
+    def _save_exchange(
+        self,
+        question: str,
+        answer: str,
+        tokens_used: Optional[int] = None,
+    ) -> Optional[str]:
+        """Save the question and answer exchange to persistent context.
+
+        This is called after a successful response to persist the conversation
+        for future context loading.
+
+        Args:
+            question: User's question
+            answer: Assistant's full response
+            tokens_used: Total tokens consumed (if known)
+
+        Returns:
+            Context ID if saved successfully, None otherwise
+        """
+        if not self._context:
+            logger.debug("No context loaded, skipping exchange save")
+            return None
+
+        try:
+            # Create user exchange
+            user_exchange = OracleExchange(
+                id=str(uuid.uuid4()),
+                role=ExchangeRole.USER,
+                content=question,
+                timestamp=datetime.now(timezone.utc),
+                token_count=self._estimate_tokens(question),
+            )
+
+            # Add user exchange first
+            self._context_service.add_exchange(
+                user_id=self._context.user_id,
+                project_id=self._context.project_id,
+                exchange=user_exchange,
+            )
+
+            # Extract mentioned files and symbols from sources
+            mentioned_files = []
+            mentioned_symbols = []
+            for source in self._collected_sources:
+                if source.path:
+                    mentioned_files.append(source.path)
+                # Note: symbols would need parsing from content
+
+            # Create assistant exchange with tool calls
+            assistant_exchange = OracleExchange(
+                id=str(uuid.uuid4()),
+                role=ExchangeRole.ASSISTANT,
+                content=answer,
+                tool_calls=self._collected_tool_calls if self._collected_tool_calls else None,
+                timestamp=datetime.now(timezone.utc),
+                token_count=tokens_used or self._estimate_tokens(answer),
+                mentioned_files=mentioned_files[:20],  # Limit to 20
+            )
+
+            # Add assistant exchange
+            self._context = self._context_service.add_exchange(
+                user_id=self._context.user_id,
+                project_id=self._context.project_id,
+                exchange=assistant_exchange,
+                model_used=self.model,
+            )
+
+            logger.info(
+                f"Saved exchange to context {self._context.id} "
+                f"(total exchanges: {len(self._context.recent_exchanges)})"
+            )
+            return self._context.id
+
+        except Exception as e:
+            logger.error(f"Failed to save exchange: {e}")
+            return self._context.id if self._context else None
 
 
 # Singleton instance

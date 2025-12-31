@@ -5,6 +5,11 @@ from .config import AppConfig, get_config, reload_config
 from .database import DatabaseService, init_database
 from .indexer import IndexerService, normalize_slug, normalize_tag
 from .oracle_bridge import OracleBridge, OracleBridgeError
+from .context_tree_service import (
+    ContextTreeService,
+    ContextTreeServiceError,
+    get_context_tree_service,
+)
 from .oracle_context_service import (
     OracleContextService,
     OracleContextServiceError,
@@ -33,6 +38,9 @@ __all__ = [
     "normalize_tag",
     "OracleBridge",
     "OracleBridgeError",
+    "ContextTreeService",
+    "ContextTreeServiceError",
+    "get_context_tree_service",
     "OracleContextService",
     "OracleContextServiceError",
     "get_context_service",

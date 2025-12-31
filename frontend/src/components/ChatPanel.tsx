@@ -20,7 +20,7 @@ import {
 } from '@/services/context';
 import type { OracleMessage, SlashCommand, OracleStreamChunk, SourceType } from '@/types/oracle';
 import type { ModelSettings } from '@/types/models';
-import type { ContextTreeData } from '@/types/context';
+import type { ContextTreeData, ContextNode } from '@/types/context';
 import { useToast } from '@/hooks/useToast';
 import { Badge } from '@/components/ui/badge';
 
@@ -44,11 +44,67 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
   const [showContextTree, setShowContextTree] = useState(false);
   const [contextTrees, setContextTrees] = useState<ContextTreeData[]>([]);
   const [activeTreeId, setActiveTreeId] = useState<string | null>(null);
+  const [currentContextId, setCurrentContextId] = useState<string | null>(null);
   const [isLoadingTrees, setIsLoadingTrees] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const toast = useToast();
+
+  /**
+   * Convert context nodes to OracleMessage format.
+   * Builds the path from root to the target node and converts each node
+   * to a pair of user/assistant messages.
+   */
+  const loadMessagesFromTree = useCallback((
+    nodes: ContextNode[],
+    targetNodeId: string | null
+  ): OracleMessage[] => {
+    if (!nodes.length || !targetNodeId) {
+      return [];
+    }
+
+    // Build a map for quick lookup
+    const nodeMap = new Map(nodes.map(n => [n.id, n]));
+
+    // Find path from root to target node
+    const pathToTarget: ContextNode[] = [];
+    let current = nodeMap.get(targetNodeId);
+
+    while (current) {
+      pathToTarget.unshift(current);
+      current = current.parent_id ? nodeMap.get(current.parent_id) : undefined;
+    }
+
+    // Convert nodes to messages (skip root node if it's just a placeholder)
+    const messages: OracleMessage[] = [];
+    for (const node of pathToTarget) {
+      // Skip root nodes that have empty question/answer (placeholder roots)
+      if (node.is_root && !node.question && !node.answer) {
+        continue;
+      }
+
+      // Add user message
+      if (node.question) {
+        messages.push({
+          role: 'user',
+          content: node.question,
+          timestamp: node.created_at,
+        });
+      }
+
+      // Add assistant message
+      if (node.answer) {
+        messages.push({
+          role: 'assistant',
+          content: node.answer,
+          timestamp: node.created_at,
+        });
+      }
+    }
+
+    return messages;
+  }, []);
 
   // Load model settings on mount
   useEffect(() => {
@@ -63,31 +119,50 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
     loadModelSettings();
   }, []);
 
-  // Load context trees on mount
-  const loadContextTrees = useCallback(async () => {
+  // Load context trees on mount and restore messages from active tree
+  const loadContextTrees = useCallback(async (restoreMessages = true) => {
     setIsLoadingTrees(true);
     try {
       const response = await getContextTrees();
       setContextTrees(response.trees);
       setActiveTreeId(response.active_tree_id);
+
+      // Restore messages from active tree if available
+      if (restoreMessages && response.active_tree_id) {
+        const activeTree = response.trees.find(
+          (t) => t.tree.root_id === response.active_tree_id
+        );
+        if (activeTree && activeTree.nodes.length > 0) {
+          const restoredMessages = loadMessagesFromTree(
+            activeTree.nodes,
+            activeTree.tree.current_node_id
+          );
+          setMessages(restoredMessages);
+          setCurrentContextId(activeTree.tree.current_node_id);
+          console.debug(
+            `Restored ${restoredMessages.length} messages from tree ${response.active_tree_id}`
+          );
+        }
+      }
     } catch (err) {
       // Context tree API might not be implemented yet - fail silently
       console.debug('Context trees not available:', err);
     } finally {
       setIsLoadingTrees(false);
     }
-  }, []);
+  }, [loadMessagesFromTree]);
 
   useEffect(() => {
-    loadContextTrees();
+    loadContextTrees(true); // Restore messages on initial mount
   }, [loadContextTrees]);
 
   // Context tree handlers
   const handleNewRoot = useCallback(async () => {
     try {
       const tree = await createTree();
-      await loadContextTrees();
+      await loadContextTrees(false); // Don't restore messages, we're starting fresh
       setActiveTreeId(tree.root_id);
+      setCurrentContextId(null); // Reset context for new tree
       setMessages([]); // Clear messages for new tree
       toast.success('New conversation tree created');
     } catch (err) {
@@ -99,13 +174,34 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
   const handleCheckout = useCallback(async (nodeId: string) => {
     try {
       await checkoutNode(nodeId);
-      await loadContextTrees();
+      // Reload trees and find the active tree to load messages
+      const response = await getContextTrees();
+      setContextTrees(response.trees);
+      setActiveTreeId(response.active_tree_id);
+
+      // Load messages up to the checked out node
+      if (response.active_tree_id) {
+        const activeTree = response.trees.find(
+          (t) => t.tree.root_id === response.active_tree_id
+        );
+        if (activeTree) {
+          const restoredMessages = loadMessagesFromTree(
+            activeTree.nodes,
+            nodeId // Load messages up to the checked out node
+          );
+          setMessages(restoredMessages);
+          setCurrentContextId(nodeId);
+          console.debug(
+            `Checked out to node ${nodeId}, restored ${restoredMessages.length} messages`
+          );
+        }
+      }
       toast.success('Checked out conversation point');
     } catch (err) {
       console.error('Failed to checkout node:', err);
       toast.error('Failed to checkout conversation point');
     }
-  }, [loadContextTrees, toast]);
+  }, [loadMessagesFromTree, toast]);
 
   const handleLabel = useCallback(async (nodeId: string, label: string) => {
     try {
@@ -143,9 +239,10 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
   const handleDeleteTree = useCallback(async (rootId: string) => {
     try {
       await deleteTree(rootId);
-      await loadContextTrees();
+      await loadContextTrees(false); // Don't restore messages, handled below
       if (activeTreeId === rootId) {
         setMessages([]);
+        setCurrentContextId(null);
       }
       toast.success('Conversation tree deleted');
     } catch (err) {
@@ -158,12 +255,29 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
     try {
       await setActiveTree(rootId);
       setActiveTreeId(rootId);
+
+      // Load messages from the selected tree
+      const selectedTree = contextTrees.find((t) => t.tree.root_id === rootId);
+      if (selectedTree && selectedTree.nodes.length > 0) {
+        const restoredMessages = loadMessagesFromTree(
+          selectedTree.nodes,
+          selectedTree.tree.current_node_id
+        );
+        setMessages(restoredMessages);
+        setCurrentContextId(selectedTree.tree.current_node_id);
+        console.debug(
+          `Switched to tree ${rootId}, restored ${restoredMessages.length} messages`
+        );
+      } else {
+        setMessages([]);
+        setCurrentContextId(null);
+      }
       toast.success('Switched to tree');
     } catch (err) {
       console.error('Failed to select tree:', err);
       toast.error('Failed to switch tree');
     }
-  }, [toast]);
+  }, [contextTrees, loadMessagesFromTree, toast]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -207,6 +321,7 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
         handler: () => {
           setMessages([]);
           setInput('');
+          setCurrentContextId(null); // Reset context for fresh conversation
           toast.success('Conversation cleared');
         },
       },
@@ -355,6 +470,7 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
           max_results: 10,
           model: modelSettings?.oracle_model,
           thinking: modelSettings?.thinking_enabled,
+          context_id: currentContextId ?? undefined, // Pass current context for conversation continuity
         },
         (chunk: OracleStreamChunk) => {
           chunkProcessedCount++;
@@ -385,6 +501,11 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
               } else if (chunk.type === 'done') {
                 lastMsg.model = chunk.model_used;
                 setStatusMessage('');
+                // Save context_id from response for next request
+                if (chunk.context_id) {
+                  setCurrentContextId(chunk.context_id);
+                  console.debug(`Updated context_id to ${chunk.context_id}`);
+                }
               } else if (chunk.type === 'error') {
                 lastMsg.is_error = true;
                 lastMsg.content = chunk.error || 'Unknown error occurred';

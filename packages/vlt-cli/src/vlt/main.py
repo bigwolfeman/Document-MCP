@@ -1501,6 +1501,15 @@ def oracle_query(
         # =====================================================================
         # Thin Client Mode - Use Backend API
         # =====================================================================
+        # Get active context for conversation continuity
+        context_id = None
+        try:
+            context_id = asyncio.run(client.get_context_id())
+            if context_id:
+                console.print(f"[dim]Continuing context: {context_id[:8]}...[/dim]")
+        except Exception as e:
+            logger.debug(f"Failed to get context_id (non-fatal): {e}")
+
         _oracle_via_backend(
             console=console,
             client=client,
@@ -1512,6 +1521,7 @@ def oracle_query(
             model=model,
             thinking=thinking,
             stream=stream,
+            context_id=context_id,
         )
     else:
         # =====================================================================
@@ -1541,6 +1551,7 @@ def _oracle_via_backend(
     model: str,
     thinking: bool,
     stream: bool,
+    context_id: str = None,
 ):
     """Execute Oracle query via backend API (thin client mode)."""
     import asyncio
@@ -1569,6 +1580,7 @@ def _oracle_via_backend(
                     model=model,
                     thinking=thinking,
                     max_tokens=max_tokens,
+                    context_id=context_id,
                 ):
                     if chunk.type == "thinking":
                         if chunk.content:
@@ -1613,6 +1625,7 @@ def _oracle_via_backend(
                 model=model,
                 thinking=thinking,
                 max_tokens=max_tokens,
+                context_id=context_id,
             ):
                 if chunk.type == "content" and chunk.content:
                     content_parts.append(chunk.content)
@@ -1643,6 +1656,7 @@ def _oracle_via_backend(
                 model=model,
                 thinking=thinking,
                 max_tokens=max_tokens,
+                context_id=context_id,
             )
             return {
                 "answer": response.answer,
@@ -1906,19 +1920,26 @@ def context_list(
         console.print("[yellow]Backend unavailable. Context tree requires backend connection.[/yellow]")
         raise typer.Exit(code=1)
 
-    trees = asyncio.run(client.get_trees())
+    response = asyncio.run(client.get_trees())
+    trees = response.trees
+    active_tree = response.active_tree
 
     if json_output:
-        output = [
-            {
-                "root_id": t.root_id,
-                "current_node_id": t.current_node_id,
-                "label": t.label,
-                "created_at": t.created_at.isoformat(),
-                "updated_at": t.updated_at.isoformat(),
-            }
-            for t in trees
-        ]
+        output = {
+            "trees": [
+                {
+                    "root_id": t.root_id,
+                    "current_node_id": t.current_node_id,
+                    "label": t.label,
+                    "node_count": t.node_count,
+                    "created_at": t.created_at.isoformat(),
+                    "last_activity": t.last_activity.isoformat(),
+                    "is_active": active_tree and t.root_id == active_tree.root_id,
+                }
+                for t in trees
+            ],
+            "active_tree_id": active_tree.root_id if active_tree else None,
+        }
         console.print(json_lib.dumps(output, indent=2))
         return
 
@@ -1927,20 +1948,26 @@ def context_list(
         return
 
     table = Table(title="Oracle Context Trees")
+    table.add_column("Active", style="green", width=6)
     table.add_column("Root ID", style="cyan")
     table.add_column("Label", style="magenta")
-    table.add_column("Current Node", style="green")
-    table.add_column("Updated", style="dim")
+    table.add_column("Nodes", style="yellow")
+    table.add_column("Last Activity", style="dim")
 
     for tree in trees:
+        is_active = active_tree and tree.root_id == active_tree.root_id
         table.add_row(
+            "*" if is_active else "",
             tree.root_id[:8] + "...",
             tree.label or "-",
-            tree.current_node_id[:8] + "...",
-            tree.updated_at.strftime("%Y-%m-%d %H:%M"),
+            str(tree.node_count),
+            tree.last_activity.strftime("%Y-%m-%d %H:%M"),
         )
 
     console.print(table)
+
+    if active_tree:
+        console.print(f"\n[dim]Active context: {active_tree.root_id[:8]}... (use 'vlt context activate <id>' to switch)[/dim]")
 
 
 @context_app.command("new")
@@ -2019,6 +2046,205 @@ def context_checkout(
     else:
         console.print(f"[red]Failed to checkout node: {node_id}[/red]")
         console.print("[dim]The node may not exist or the backend doesn't support this feature.[/dim]")
+
+
+@context_app.command("activate")
+def context_activate(
+    tree_id: str = typer.Argument(..., help="Tree root ID to activate (use 'vlt context list' to find IDs)"),
+):
+    """
+    Set a context tree as the active conversation.
+
+    The active tree is used for oracle queries. This allows you to switch
+    between different conversation threads.
+
+    Example:
+        vlt context activate abc123
+    """
+    import asyncio
+    from vlt.core.oracle_client import OracleClient
+    from rich.console import Console
+
+    console = Console()
+    client = OracleClient()
+
+    if not client.token:
+        console.print("[yellow]No sync token configured.[/yellow]")
+        raise typer.Exit(code=1)
+
+    if not client.is_available():
+        console.print("[yellow]Backend unavailable.[/yellow]")
+        raise typer.Exit(code=1)
+
+    success = asyncio.run(client.activate_tree(tree_id))
+
+    if success:
+        console.print(f"[green]Activated context tree: {tree_id[:8]}...[/green]")
+        console.print("[dim]Future oracle queries will use this context.[/dim]")
+    else:
+        console.print(f"[red]Failed to activate tree: {tree_id}[/red]")
+        console.print("[dim]The tree may not exist or the backend doesn't support this feature.[/dim]")
+
+
+@context_app.command("show")
+def context_show(
+    tree_id: str = typer.Argument(None, help="Tree root ID (defaults to active tree)"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """
+    Show details of a context tree including all nodes.
+
+    Displays the tree structure with questions, answers, and node hierarchy.
+
+    Example:
+        vlt context show              # Show active tree
+        vlt context show abc123       # Show specific tree
+        vlt context show --json
+    """
+    import asyncio
+    from vlt.core.oracle_client import OracleClient
+    from rich.console import Console
+    from rich.tree import Tree as RichTree
+    import json as json_lib
+
+    console = Console()
+    client = OracleClient()
+
+    if not client.token:
+        console.print("[yellow]No sync token configured.[/yellow]")
+        raise typer.Exit(code=1)
+
+    if not client.is_available():
+        console.print("[yellow]Backend unavailable.[/yellow]")
+        raise typer.Exit(code=1)
+
+    # Get tree_id from active context if not provided
+    if not tree_id:
+        active = asyncio.run(client.get_active_context())
+        if not active:
+            console.print("[yellow]No active context. Specify a tree ID or activate one first.[/yellow]")
+            raise typer.Exit(code=1)
+        tree_id = active.root_id
+
+    tree_data = asyncio.run(client.get_tree(tree_id))
+
+    if not tree_data or not tree_data.active_tree:
+        console.print(f"[red]Tree not found: {tree_id}[/red]")
+        raise typer.Exit(code=1)
+
+    if json_output:
+        output = {
+            "tree": {
+                "root_id": tree_data.active_tree.root_id,
+                "current_node_id": tree_data.active_tree.current_node_id,
+                "label": tree_data.active_tree.label,
+                "node_count": tree_data.active_tree.node_count,
+            },
+            "nodes": {
+                node_id: {
+                    "id": node.id,
+                    "parent_id": node.parent_id,
+                    "question": node.question[:100] + "..." if len(node.question) > 100 else node.question,
+                    "answer_preview": node.answer[:100] + "..." if len(node.answer) > 100 else node.answer,
+                    "is_checkpoint": node.is_checkpoint,
+                    "label": node.label,
+                }
+                for node_id, node in tree_data.nodes.items()
+            },
+            "path_to_head": tree_data.path_to_head,
+        }
+        console.print(json_lib.dumps(output, indent=2))
+        return
+
+    # Build visual tree
+    tree = tree_data.active_tree
+    nodes = tree_data.nodes
+
+    console.print(f"[bold]Context Tree: {tree.root_id[:8]}...[/bold]")
+    if tree.label:
+        console.print(f"[dim]Label: {tree.label}[/dim]")
+    console.print(f"[dim]Nodes: {tree.node_count} | Current: {tree.current_node_id[:8]}...[/dim]")
+    console.print()
+
+    # Find root node
+    root_node = None
+    for node in nodes.values():
+        if node.is_root:
+            root_node = node
+            break
+
+    if not root_node:
+        console.print("[yellow]No root node found in tree.[/yellow]")
+        return
+
+    # Build tree structure recursively
+    def add_node_to_tree(rich_tree, node):
+        is_current = node.id == tree.current_node_id
+        is_checkpoint = node.is_checkpoint
+        prefix = "[bold green]>> [/bold green]" if is_current else ""
+        checkpoint = " [yellow](checkpoint)[/yellow]" if is_checkpoint else ""
+        label_text = f" [magenta]({node.label})[/magenta]" if node.label else ""
+
+        question_preview = node.question[:50] + "..." if len(node.question) > 50 else node.question
+        answer_preview = node.answer[:50] + "..." if len(node.answer) > 50 else node.answer
+
+        node_text = f"{prefix}{node.id[:8]}{label_text}{checkpoint}\n  Q: {question_preview}\n  A: {answer_preview}"
+        branch = rich_tree.add(node_text)
+
+        # Find children
+        for child in nodes.values():
+            if child.parent_id == node.id:
+                add_node_to_tree(branch, child)
+
+    rich_tree = RichTree(f"[bold cyan]{root_node.id[:8]}[/bold cyan] (root)")
+    for child in nodes.values():
+        if child.parent_id == root_node.id:
+            add_node_to_tree(rich_tree, child)
+
+    console.print(rich_tree)
+
+
+@context_app.command("delete")
+def context_delete(
+    tree_id: str = typer.Argument(..., help="Tree root ID to delete"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
+):
+    """
+    Delete a context tree and all its nodes.
+
+    This action cannot be undone.
+
+    Example:
+        vlt context delete abc123
+        vlt context delete abc123 --force
+    """
+    import asyncio
+    from vlt.core.oracle_client import OracleClient
+    from rich.console import Console
+
+    console = Console()
+    client = OracleClient()
+
+    if not client.token:
+        console.print("[yellow]No sync token configured.[/yellow]")
+        raise typer.Exit(code=1)
+
+    if not client.is_available():
+        console.print("[yellow]Backend unavailable.[/yellow]")
+        raise typer.Exit(code=1)
+
+    if not force:
+        confirm = typer.confirm(f"Delete context tree {tree_id[:8]}...? This cannot be undone.")
+        if not confirm:
+            console.print("[dim]Aborted.[/dim]")
+            return
+
+    success = asyncio.run(client.delete_tree(tree_id))
+
+    if success:
+        console.print(f"[green]Deleted context tree: {tree_id[:8]}...[/green]")
+    else:
+        console.print(f"[red]Failed to delete tree: {tree_id}[/red]")
 
 
 @context_app.command("history")

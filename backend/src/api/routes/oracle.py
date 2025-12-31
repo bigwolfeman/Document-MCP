@@ -95,12 +95,12 @@ async def query_oracle(
 
         logger.debug(f"Using oracle_model={oracle_model}, subagent_model={subagent_model}")
 
-        # Create OracleAgent
+        # Create OracleAgent with context service integration
         agent = OracleAgent(
             api_key=openrouter_api_key,
             model=oracle_model,
             subagent_model=subagent_model,
-            project_id=None,  # TODO: Get from request or detect
+            project_id=request.project_id or "default",
             user_id=auth.user_id,
         )
 
@@ -109,6 +109,7 @@ async def query_oracle(
         sources = []
         tokens_used = None
         model_used = None
+        context_id = None
 
         async for chunk in agent.query(
             question=request.question,
@@ -116,6 +117,7 @@ async def query_oracle(
             stream=False,  # Non-streaming mode
             thinking=request.thinking,
             max_tokens=request.max_tokens,
+            project_id=request.project_id,
         ):
             if chunk.type == "content" and chunk.content:
                 content_parts.append(chunk.content)
@@ -124,6 +126,7 @@ async def query_oracle(
             elif chunk.type == "done":
                 tokens_used = chunk.tokens_used
                 model_used = chunk.model_used
+                context_id = chunk.context_id
             elif chunk.type == "error":
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -135,6 +138,7 @@ async def query_oracle(
             sources=sources,
             tokens_used=tokens_used,
             model_used=model_used,
+            context_id=context_id,
             retrieval_traces=None,  # TODO: Implement if explain=True
         )
 
@@ -211,12 +215,12 @@ async def query_oracle_stream(
 
     logger.debug(f"Stream using oracle_model={oracle_model}, subagent_model={subagent_model}")
 
-    # Create OracleAgent with user's settings
+    # Create OracleAgent with user's settings and context integration
     agent = OracleAgent(
         api_key=openrouter_api_key,
         model=oracle_model,
         subagent_model=subagent_model,
-        project_id=None,  # TODO: Get from request or detect
+        project_id=request.project_id or "default",
         user_id=auth.user_id,
     )
 
@@ -235,6 +239,7 @@ async def query_oracle_stream(
                 stream=True,
                 thinking=request.thinking,
                 max_tokens=request.max_tokens,
+                project_id=request.project_id,
             ):
                 chunk_counter += 1
                 chunk_json = chunk.model_dump(exclude_none=True)

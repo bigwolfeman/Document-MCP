@@ -12,6 +12,7 @@ export interface OracleRequest {
   model?: string;            // Override LLM model (e.g., 'deepseek/deepseek-chat')
   thinking?: boolean;        // Enable thinking mode
   max_tokens?: number;       // Maximum tokens for context assembly
+  context_id?: string;       // Context tree node ID for conversation continuity
 }
 
 /**
@@ -36,6 +37,7 @@ export interface OracleStreamChunk {
   tokens_used?: number;      // for done event
   duration_ms?: number;      // for done event
   model_used?: string;       // for done event (matches backend)
+  context_id?: string;       // for done event - context node ID for next request
   error?: string;            // for error events
   tool_call?: {              // for tool_call events
     id: string;

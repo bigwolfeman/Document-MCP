@@ -68,22 +68,46 @@ class OracleResponse(BaseModel):
 class ContextNode(BaseModel):
     """A node in the context tree (represents a conversation turn)."""
     id: str
+    root_id: str
     parent_id: Optional[str] = None
-    label: Optional[str] = None
-    question: Optional[str] = None
-    answer_preview: Optional[str] = None
+    user_id: Optional[str] = None
+    project_id: Optional[str] = None
     created_at: datetime
-    children: List["ContextNode"] = Field(default_factory=list)
+    question: str = ""
+    answer: str = ""
+    tokens_used: int = 0
+    model_used: Optional[str] = None
+    label: Optional[str] = None
+    is_checkpoint: bool = False
+    is_root: bool = False
+    child_count: int = 0
 
 
 class ContextTree(BaseModel):
     """Context tree representing conversation history."""
     root_id: str
+    user_id: Optional[str] = None
+    project_id: Optional[str] = None
     current_node_id: str
-    label: Optional[str] = None
-    nodes: Dict[str, ContextNode] = Field(default_factory=dict)
     created_at: datetime
-    updated_at: datetime
+    last_activity: datetime
+    node_count: int = 1
+    max_nodes: int = 30
+    label: Optional[str] = None
+
+
+class ContextTreesResponse(BaseModel):
+    """Response from GET /api/oracle/context/trees."""
+    trees: List[ContextTree] = Field(default_factory=list)
+    active_tree: Optional[ContextTree] = None
+
+
+class ContextTreeData(BaseModel):
+    """Full tree data including nodes."""
+    trees: List[ContextTree] = Field(default_factory=list)
+    active_tree: Optional[ContextTree] = None
+    nodes: Dict[str, ContextNode] = Field(default_factory=dict)
+    path_to_head: List[str] = Field(default_factory=list)
 
 
 class ConversationMessage(BaseModel):
@@ -199,6 +223,7 @@ class OracleClient:
         model: Optional[str] = None,
         thinking: bool = False,
         max_tokens: int = 16000,
+        context_id: Optional[str] = None,
     ) -> OracleResponse:
         """Query oracle (non-streaming).
 
@@ -209,6 +234,7 @@ class OracleClient:
             model: Override LLM model.
             thinking: Enable extended thinking mode.
             max_tokens: Maximum context tokens.
+            context_id: ID of context tree to use (for conversation continuity).
 
         Returns:
             OracleResponse with answer and sources.
@@ -227,6 +253,7 @@ class OracleClient:
             "model": model,
             "thinking": thinking,
             "max_tokens": max_tokens,
+            "context_id": context_id,
         }
         # Remove None values
         payload = {k: v for k, v in payload.items() if v is not None}
@@ -256,6 +283,7 @@ class OracleClient:
         model: Optional[str] = None,
         thinking: bool = False,
         max_tokens: int = 16000,
+        context_id: Optional[str] = None,
     ) -> AsyncGenerator[OracleStreamChunk, None]:
         """Query oracle with streaming response (SSE).
 
@@ -268,6 +296,7 @@ class OracleClient:
             model: Override LLM model.
             thinking: Enable extended thinking mode.
             max_tokens: Maximum context tokens.
+            context_id: ID of context tree to use (for conversation continuity).
 
         Yields:
             OracleStreamChunk objects with type, content, sources, etc.
@@ -290,6 +319,7 @@ class OracleClient:
             "model": model,
             "thinking": thinking,
             "max_tokens": max_tokens,
+            "context_id": context_id,
         }
         # Remove None values
         payload = {k: v for k, v in payload.items() if v is not None}
@@ -430,37 +460,63 @@ class OracleClient:
             return False
 
     # =========================================================================
-    # Context Tree Operations (for future use)
+    # Context Tree Operations
     # =========================================================================
 
-    async def get_trees(self) -> List[ContextTree]:
+    async def get_trees(self) -> ContextTreesResponse:
         """Get all context trees for the user.
 
-        Note: This endpoint may not exist yet on the backend.
-        Returns empty list if not implemented.
+        Returns:
+            ContextTreesResponse with trees and active_tree.
         """
         if not self.token:
-            return []
+            return ContextTreesResponse()
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
-                    f"{self.base_url}/api/oracle/trees",
+                    f"{self.base_url}/api/oracle/context/trees",
                     headers=self._headers(),
                 )
                 if response.status_code == 404:
                     # Endpoint not implemented yet
-                    return []
+                    return ContextTreesResponse()
                 response.raise_for_status()
                 data = response.json()
-                return [ContextTree(**tree) for tree in data.get("trees", [])]
+                return ContextTreesResponse(**data)
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
-                return []
+                return ContextTreesResponse()
             raise
         except Exception as e:
             logger.error(f"Failed to get trees: {e}")
-            return []
+            return ContextTreesResponse()
+
+    async def get_tree(self, root_id: str) -> Optional[ContextTreeData]:
+        """Get a specific context tree with all its nodes.
+
+        Args:
+            root_id: Root ID of the tree.
+
+        Returns:
+            ContextTreeData with full tree and node info.
+        """
+        if not self.token:
+            return None
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    f"{self.base_url}/api/oracle/context/trees/{root_id}",
+                    headers=self._headers(),
+                )
+                if response.status_code == 404:
+                    return None
+                response.raise_for_status()
+                return ContextTreeData(**response.json())
+        except Exception as e:
+            logger.error(f"Failed to get tree {root_id}: {e}")
+            return None
 
     async def create_tree(self, label: Optional[str] = None) -> Optional[ContextTree]:
         """Create a new context tree (start new conversation).
@@ -477,7 +533,7 @@ class OracleClient:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(
-                    f"{self.base_url}/api/oracle/trees",
+                    f"{self.base_url}/api/oracle/context/trees",
                     json={"label": label} if label else {},
                     headers=self._headers(),
                 )
@@ -488,6 +544,52 @@ class OracleClient:
         except Exception as e:
             logger.error(f"Failed to create tree: {e}")
             return None
+
+    async def delete_tree(self, root_id: str) -> bool:
+        """Delete a context tree.
+
+        Args:
+            root_id: Root ID of the tree to delete.
+
+        Returns:
+            True if deleted, False otherwise.
+        """
+        if not self.token:
+            return False
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.delete(
+                    f"{self.base_url}/api/oracle/context/trees/{root_id}",
+                    headers=self._headers(),
+                )
+                return response.status_code in (200, 204)
+        except Exception as e:
+            logger.error(f"Failed to delete tree {root_id}: {e}")
+            return False
+
+    async def activate_tree(self, root_id: str) -> bool:
+        """Set a tree as the active context tree.
+
+        Args:
+            root_id: Root ID of the tree to activate.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        if not self.token:
+            return False
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/api/oracle/context/trees/{root_id}/activate",
+                    headers=self._headers(),
+                )
+                return response.status_code == 200
+        except Exception as e:
+            logger.error(f"Failed to activate tree {root_id}: {e}")
+            return False
 
     async def checkout(self, node_id: str) -> Optional[ContextTree]:
         """Switch to a different node in the context tree.
@@ -504,8 +606,7 @@ class OracleClient:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(
-                    f"{self.base_url}/api/oracle/trees/checkout",
-                    json={"node_id": node_id},
+                    f"{self.base_url}/api/oracle/context/nodes/{node_id}/checkout",
                     headers=self._headers(),
                 )
                 if response.status_code == 404:
@@ -516,17 +617,107 @@ class OracleClient:
             logger.error(f"Failed to checkout node: {e}")
             return None
 
-    async def get_current_context(self) -> Optional[ContextTree]:
-        """Get the current active tree and node.
+    async def label_node(self, node_id: str, label: str) -> Optional[ContextNode]:
+        """Set a label on a context node.
+
+        Args:
+            node_id: ID of the node to label.
+            label: Label text.
 
         Returns:
-            Current ContextTree if any, None otherwise.
+            Updated ContextNode if successful, None on error.
         """
-        trees = await self.get_trees()
-        if trees:
-            # Return the most recently updated tree
-            return max(trees, key=lambda t: t.updated_at)
-        return None
+        if not self.token:
+            return None
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.put(
+                    f"{self.base_url}/api/oracle/context/nodes/{node_id}/label",
+                    json={"label": label},
+                    headers=self._headers(),
+                )
+                if response.status_code == 404:
+                    return None
+                response.raise_for_status()
+                return ContextNode(**response.json())
+        except Exception as e:
+            logger.error(f"Failed to label node {node_id}: {e}")
+            return None
+
+    async def set_checkpoint(self, node_id: str, is_checkpoint: bool) -> Optional[ContextNode]:
+        """Set checkpoint status on a context node.
+
+        Checkpoints are protected from pruning.
+
+        Args:
+            node_id: ID of the node.
+            is_checkpoint: Whether this node should be a checkpoint.
+
+        Returns:
+            Updated ContextNode if successful, None on error.
+        """
+        if not self.token:
+            return None
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.put(
+                    f"{self.base_url}/api/oracle/context/nodes/{node_id}/checkpoint",
+                    json={"is_checkpoint": is_checkpoint},
+                    headers=self._headers(),
+                )
+                if response.status_code == 404:
+                    return None
+                response.raise_for_status()
+                return ContextNode(**response.json())
+        except Exception as e:
+            logger.error(f"Failed to set checkpoint on node {node_id}: {e}")
+            return None
+
+    async def prune_tree(self, root_id: str) -> Dict[str, Any]:
+        """Prune old non-checkpoint nodes from a tree.
+
+        Args:
+            root_id: Root ID of the tree to prune.
+
+        Returns:
+            Prune result with nodes_removed count.
+        """
+        if not self.token:
+            return {"nodes_removed": 0}
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/api/oracle/context/trees/{root_id}/prune",
+                    headers=self._headers(),
+                )
+                if response.status_code == 404:
+                    return {"nodes_removed": 0}
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            logger.error(f"Failed to prune tree {root_id}: {e}")
+            return {"nodes_removed": 0}
+
+    async def get_active_context(self) -> Optional[ContextTree]:
+        """Get the current active context tree.
+
+        Returns:
+            Active ContextTree if any, None otherwise.
+        """
+        response = await self.get_trees()
+        return response.active_tree
+
+    async def get_context_id(self) -> Optional[str]:
+        """Get the ID of the active context for queries.
+
+        Returns:
+            Root ID of active tree if any, None otherwise.
+        """
+        active = await self.get_active_context()
+        return active.root_id if active else None
 
 
 # Synchronous wrapper for CLI use
