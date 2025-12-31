@@ -98,6 +98,22 @@ class UserSettingsService:
         finally:
             conn.close()
 
+    def get_oracle_model(self, user_id: str) -> str:
+        """
+        Get user's preferred Oracle model.
+
+        This is used by OracleAgent for the primary model.
+        Returns the configured model or a default if not set.
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            Model identifier string (e.g., "deepseek/deepseek-chat")
+        """
+        settings = self.get_settings(user_id)
+        return settings.oracle_model or "anthropic/claude-sonnet-4"
+
     def get_subagent_model(self, user_id: str) -> str:
         """
         Get user's preferred subagent model.

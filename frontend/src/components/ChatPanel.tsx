@@ -217,6 +217,8 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
           question: trimmedInput,
           sources: activeSources,
           max_results: 10,
+          model: modelSettings?.oracle_model,
+          thinking: modelSettings?.thinking_enabled,
         },
         (chunk: OracleStreamChunk) => {
           setMessages((prev) => {
@@ -234,7 +236,7 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
                 if (!lastMsg.sources) lastMsg.sources = [];
                 lastMsg.sources.push(chunk.source);
               } else if (chunk.type === 'done') {
-                lastMsg.model = chunk.model;
+                lastMsg.model = chunk.model_used;
                 setStatusMessage('');
               } else if (chunk.type === 'error') {
                 lastMsg.is_error = true;

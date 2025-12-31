@@ -89,13 +89,16 @@ async def query_oracle(
     try:
         logger.info(f"Oracle query from user {auth.user_id}: {request.question[:100]}")
 
-        # Get user's subagent model for Librarian delegation
+        # Get user's model settings for Oracle and Librarian
+        oracle_model = request.model or settings_service.get_oracle_model(auth.user_id)
         subagent_model = settings_service.get_subagent_model(auth.user_id)
+
+        logger.debug(f"Using oracle_model={oracle_model}, subagent_model={subagent_model}")
 
         # Create OracleAgent
         agent = OracleAgent(
             api_key=openrouter_api_key,
-            model=request.model,
+            model=oracle_model,
             subagent_model=subagent_model,
             project_id=None,  # TODO: Get from request or detect
             user_id=auth.user_id,
@@ -202,13 +205,16 @@ async def query_oracle_stream(
         logger.info(f"Cancelling existing session for user {auth.user_id}")
         _active_sessions[auth.user_id].cancel()
 
-    # Get user's subagent model for Librarian delegation
+    # Get user's model settings for Oracle and Librarian
+    oracle_model = request.model or settings_service.get_oracle_model(auth.user_id)
     subagent_model = settings_service.get_subagent_model(auth.user_id)
+
+    logger.debug(f"Stream using oracle_model={oracle_model}, subagent_model={subagent_model}")
 
     # Create OracleAgent with user's settings
     agent = OracleAgent(
         api_key=openrouter_api_key,
-        model=request.model,  # None uses default
+        model=oracle_model,
         subagent_model=subagent_model,
         project_id=None,  # TODO: Get from request or detect
         user_id=auth.user_id,
