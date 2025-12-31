@@ -21,6 +21,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
+from .thread_retriever import ThreadRetriever, get_thread_retriever
+
 logger = logging.getLogger(__name__)
 
 # Try to add packages/vlt-cli to Python path for direct import
@@ -206,6 +208,19 @@ class OracleBridge:
             yield {"type": "thinking", "content": "Searching knowledge sources..."}
             await asyncio.sleep(0.1)
 
+            # Retrieve thread context using direct database query
+            thread_retriever = get_thread_retriever()
+            thread_context, thread_citations = thread_retriever.get_context_for_query(
+                user_id=user_id,
+                query=question,
+                project_id=project,
+                max_tokens=max_tokens // 4,  # Reserve 1/4 of context for threads
+            )
+
+            if thread_context:
+                yield {"type": "thinking", "content": f"Found {len(thread_citations)} relevant thread entries..."}
+                await asyncio.sleep(0.1)
+
             yield {"type": "thinking", "content": "Retrieving relevant context..."}
             await asyncio.sleep(0.1)
 
@@ -245,18 +260,26 @@ class OracleBridge:
                 yield {"type": "content", "content": chunk}
                 await asyncio.sleep(0.01)  # Small delay for streaming effect
 
-            # Stream sources
+            # Stream sources from subprocess result
             sources_list = result.get("sources", [])
             for source in sources_list:
                 yield {"type": "source", "source": source}
                 await asyncio.sleep(0.01)
+
+            # Stream thread citations (from direct DB query)
+            for citation in thread_citations:
+                yield {"type": "source", "source": citation.model_dump()}
+                await asyncio.sleep(0.01)
+
+            # Combine all sources for history
+            all_sources = sources_list + [c.model_dump() for c in thread_citations]
 
             # Store answer in conversation history
             self._add_to_history(
                 user_id,
                 "assistant",
                 answer,
-                sources=sources_list
+                sources=all_sources
             )
 
             # Done chunk

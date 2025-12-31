@@ -5,6 +5,8 @@ from .config import AppConfig, get_config, reload_config
 from .database import DatabaseService, init_database
 from .indexer import IndexerService, normalize_slug, normalize_tag
 from .oracle_bridge import OracleBridge, OracleBridgeError
+from .thread_retriever import ThreadRetriever, get_thread_retriever
+from .thread_service import ThreadService, get_thread_service
 from .vault import VaultNote, VaultService, sanitize_path, validate_note_path
 
 __all__ = [
@@ -24,4 +26,8 @@ __all__ = [
     "normalize_tag",
     "OracleBridge",
     "OracleBridgeError",
+    "ThreadRetriever",
+    "get_thread_retriever",
+    "ThreadService",
+    "get_thread_service",
 ]

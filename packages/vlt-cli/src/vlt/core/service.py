@@ -185,21 +185,71 @@ class SqliteVaultService(IVaultService):
              else:
                  raise VaultError(f"Thread {thread_slug} not found.")
 
-        # T060: Use lazy evaluation for summary generation (FR-047)
-        # Generate summary on-demand when thread is read, not on write
-        from vlt.core.lazy_eval import ThreadSummaryManager
+        # Try server-side summarization first if configured
+        from vlt.config import settings
 
-        try:
-            summary_manager = ThreadSummaryManager(OpenRouterLLMProvider(), self.db)
-            summary = summary_manager.generate_summary(thread_slug)
-        except Exception as e:
-            # Fallback to old State-based summary if lazy eval fails
+        summary = None
+
+        if settings.is_server_configured:
+            # Use server-side summarization (preferred)
+            import asyncio
+            from vlt.core.sync import sync_and_summarize_thread
+
+            try:
+                result = asyncio.run(sync_and_summarize_thread(
+                    thread_id=thread_slug,
+                    project_id=thread.project_id,
+                    db=self.db,
+                ))
+
+                if result.success:
+                    summary = result.summary
+                else:
+                    # Log the error but continue to fallback
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"Server summarization failed: {result.error}")
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Server summarization failed: {e}")
+
+        # Fallback to local summary methods if server-side failed or not configured
+        if not summary:
+            # Check if we have a cached State-based summary
             state = self.db.scalars(
                 select(State)
                 .where(State.target_id == thread_slug)
                 .where(State.target_type == "thread")
             ).first()
-            summary = state.summary if state else "No summary available."
+
+            # Error messages that indicate stale/bad cached summaries
+            error_indicators = [
+                "LLM API Key missing",
+                "Cannot summarize",
+                "Error generating summary",
+                "Server summarization failed",
+            ]
+
+            # Use cached summary only if it's valid (not an error message)
+            if state and state.summary:
+                is_error_summary = any(err in state.summary for err in error_indicators)
+                if not is_error_summary:
+                    summary = state.summary
+
+            # If no valid summary, provide helpful guidance
+            if not summary:
+                if settings.is_server_configured:
+                    summary = (
+                        "Summary pending. Run: vlt librarian run\n"
+                        "(This will sync threads to server and generate summaries)"
+                    )
+                else:
+                    summary = (
+                        "No summary available. To enable summaries:\n"
+                        "1. Configure server sync: vlt config set-key <token> --server <url>\n"
+                        "2. Run: vlt librarian run"
+                    )
 
         query = select(Node).where(Node.thread_id == thread_slug).order_by(desc(Node.sequence_id))
 

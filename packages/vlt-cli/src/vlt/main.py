@@ -73,38 +73,109 @@ your train of thought. This is your primary interface for interacting with the V
 app = typer.Typer(name="vlt", help=APP_HELP, no_args_is_help=True)
 thread_app = typer.Typer(name="thread", help=THREAD_HELP)
 config_app = typer.Typer(name="config", help="Manage configuration and keys.")
+sync_app = typer.Typer(name="sync", help="Sync commands for remote backend.")
 app.add_typer(thread_app, name="thread")
 app.add_typer(config_app, name="config")
+app.add_typer(sync_app, name="sync")
 
 service = SqliteVaultService()
 
 @config_app.command("set-key")
-def set_key(key: str):
+def set_key(
+    token: str = typer.Argument(..., help="Server sync token for authentication"),
+    server_url: str = typer.Option(None, "--server", "-s", help="Backend server URL (e.g., https://your-server.com)")
+):
     """
-    Set the OpenRouter API Key persistently.
-    
-    This saves the key to ~/.vlt/.env so you don't have to export it every time.
+    Set the server sync token for backend authentication.
+
+    This saves the token to ~/.vlt/.env as VLT_SYNC_TOKEN so you don't have to
+    export it every time. The token authenticates vlt-cli with the backend server
+    for syncing threads and using server-side features like summarization.
+
+    Get your token from the backend server's settings page or via the /api/tokens endpoint.
+
+    Examples:
+        vlt config set-key sk-abc123xyz
+        vlt config set-key sk-abc123xyz --server https://my-vault.example.com
     """
     env_path = os.path.expanduser("~/.vlt/.env")
-    
+
     # Read existing lines to preserve other configs if any
     lines = []
     if os.path.exists(env_path):
         with open(env_path, "r") as f:
             lines = f.readlines()
-            
-    # Remove existing key if present
+
+    # Remove existing sync token if present
+    lines = [l for l in lines if not l.startswith("VLT_SYNC_TOKEN=")]
+
+    # Also remove deprecated OpenRouter key reference (migration)
     lines = [l for l in lines if not l.startswith("VLT_OPENROUTER_API_KEY=")]
-    
-    # Append new key
-    lines.append(f"VLT_OPENROUTER_API_KEY={key}\n")
-    
+
+    # Append new sync token
+    lines.append(f"VLT_SYNC_TOKEN={token}\n")
+
+    # Optionally set server URL
+    if server_url:
+        lines = [l for l in lines if not l.startswith("VLT_VAULT_URL=")]
+        lines.append(f"VLT_VAULT_URL={server_url}\n")
+
     with open(env_path, "w") as f:
         f.writelines(lines)
-        
-    print(f"[green]API Key saved to {env_path}[/green]")
+
+    print(f"[green]Sync token saved to {env_path}[/green]")
+    if server_url:
+        print(f"[green]Server URL set to {server_url}[/green]")
+    print("[dim]The CLI will now authenticate with the backend server for sync operations.[/dim]")
 
 from vlt.core.identity import create_vlt_toml, load_project_identity
+
+# ============================================================================
+# Sync Commands (T028-T029)
+# ============================================================================
+
+@sync_app.command("status")
+def sync_status():
+    """
+    Show sync status and queue.
+
+    Displays pending entries in the sync queue that failed to sync
+    to the remote backend and are waiting for retry.
+    """
+    from vlt.core.sync import ThreadSyncClient
+
+    client = ThreadSyncClient()
+    status = client.get_queue_status()
+
+    if status["pending"] == 0:
+        print("[green]Sync queue is empty - all entries synced[/green]")
+    else:
+        print(f"[yellow]Pending entries: {status['pending']}[/yellow]")
+        for item in status["items"]:
+            entry_id = item['entry'].get('entry_id', 'unknown')[:8]
+            print(f"  - {item['thread_id']}/{entry_id}... (attempts: {item['attempts']})")
+            if item.get('error'):
+                print(f"    [dim]Last error: {item['error'][:60]}...[/dim]")
+
+
+@sync_app.command("retry")
+def sync_retry():
+    """
+    Retry failed sync entries.
+
+    Attempts to sync all pending entries in the queue to the remote backend.
+    Entries that exceed max retries are skipped but kept for manual review.
+    """
+    from vlt.core.sync import ThreadSyncClient
+    import asyncio
+
+    client = ThreadSyncClient()
+    result = asyncio.run(client.retry_queue())
+
+    print(f"[green]Success: {result['success']}[/green]")
+    print(f"[red]Failed: {result['failed']}[/red]")
+    print(f"[yellow]Skipped (max retries): {result['skipped']}[/yellow]")
+
 
 # ...
 
@@ -219,7 +290,28 @@ def push_thought(
 
     node = service.add_thought(thread_id=thread_slug, content=content, author=effective_author)
     print(f"[bold green]OK:[/bold green] {node.thread_id}/{node.sequence_id}")
-    
+
+    # Sync to backend (async, non-blocking)
+    from vlt.core.sync import sync_thread_entry
+    import asyncio
+
+    # Get thread info for sync
+    try:
+        thread_info = service.get_thread_state(thread_slug, limit=1)
+        if thread_info:
+            asyncio.run(sync_thread_entry(
+                thread_id=thread_slug,
+                project_id=thread_info.project_id,
+                name=thread_info.thread_id,
+                entry_id=node.id,
+                sequence_id=node.sequence_id,
+                content=content,
+                author=effective_author,
+            ))
+    except Exception as e:
+        # Don't fail push if sync fails
+        logger.debug(f"Sync failed (non-fatal): {e}")
+
     if effective_author == "user" and not os.environ.get("VLT_AUTHOR"):
         print("[dim](Tip: Use --author to sign your thoughts)[/dim]")
 @app.command("overview")
@@ -314,37 +406,95 @@ coderag_app = typer.Typer(name="coderag", help="Code intelligence and indexing f
 app.add_typer(coderag_app, name="coderag")
 
 @librarian_app.command("run")
-def run_librarian(daemon: bool = False, interval: int = 10):
+def run_librarian(
+    daemon: bool = typer.Option(False, "--daemon", "-d", help="Run continuously in background"),
+    interval: int = typer.Option(10, "--interval", "-i", help="Seconds between processing runs (daemon mode)"),
+    legacy: bool = typer.Option(False, "--legacy", help="Use deprecated local LLM calls instead of server")
+):
     """
-    [System] Background process for embeddings & state compression.
-    
-    The 'Subconscious' that processes raw thoughts into summaries and searchable vectors.
+    Process pending nodes into summaries using server-side LLM.
+
+    By default, this command uses the backend server for summarization,
+    which handles LLM API keys and billing centrally. Threads must be
+    synced to the server first.
+
+    To configure server access:
+        vlt config set-key <your-sync-token>
+
+    The --legacy flag enables the deprecated local LLM mode, which requires
+    configuring your own OpenRouter API key. This mode will be removed in
+    a future version.
     """
-    llm = OpenRouterLLMProvider()
-    librarian = Librarian(llm_provider=llm)
-    
-    print("[bold blue]Librarian started.[/bold blue]")
-    
-    while True:
-        try:
-            print("Processing pending nodes...")
-            nodes_count = librarian.process_pending_nodes()
-            if nodes_count > 0:
-                print(f"[green]Processed {nodes_count} nodes.[/green]")
-                
-                print("Updating project overviews...")
-                proj_count = librarian.update_project_overviews()
-                print(f"[green]Updated {proj_count} projects.[/green]")
-            else:
-                print("No new nodes.")
-                
-        except Exception as e:
-            print(f"[red]Error:[/red] {e}")
-            
-        if not daemon:
-            break
-            
-        time.sleep(interval)
+    from vlt.core.librarian import ServerLibrarian, Librarian
+
+    if legacy:
+        # Deprecated: Use local LLM provider
+        print("[yellow]WARNING: Using deprecated local LLM mode.[/yellow]")
+        print("[yellow]This mode requires your own OpenRouter API key and will be removed.[/yellow]")
+        print("[dim]Consider using server-side summarization instead: vlt config set-key <token>[/dim]")
+        print()
+
+        llm = OpenRouterLLMProvider()
+        librarian = Librarian(llm_provider=llm)
+
+        print("[bold blue]Librarian started (legacy mode).[/bold blue]")
+
+        while True:
+            try:
+                print("Processing pending nodes...")
+                nodes_count = librarian.process_pending_nodes()
+                if nodes_count > 0:
+                    print(f"[green]Processed {nodes_count} nodes.[/green]")
+
+                    print("Updating project overviews...")
+                    proj_count = librarian.update_project_overviews()
+                    print(f"[green]Updated {proj_count} projects.[/green]")
+                else:
+                    print("No new nodes.")
+
+            except Exception as e:
+                print(f"[red]Error:[/red] {e}")
+
+            if not daemon:
+                break
+
+            time.sleep(interval)
+    else:
+        # New: Use server-side summarization
+        librarian = ServerLibrarian()
+
+        # Check for sync token
+        if not librarian.sync_token:
+            print("[red]Error: No sync token configured.[/red]")
+            print("Run: vlt config set-key <your-sync-token>")
+            print("[dim]Or use --legacy flag to use local LLM calls (deprecated)[/dim]")
+            raise typer.Exit(code=1)
+
+        print(f"[bold blue]Librarian started (server: {librarian.vault_url}).[/bold blue]")
+        print()
+        print("[dim]The librarian will:[/dim]")
+        print("[dim]1. Sync all local threads to the server[/dim]")
+        print("[dim]2. Request server-side summarization for each thread[/dim]")
+        print()
+
+        while True:
+            try:
+                print("Syncing and processing threads via server...")
+                nodes_count = librarian.process_pending_nodes_via_server()
+                if nodes_count > 0:
+                    print(f"[green]Processed {nodes_count} nodes via server.[/green]")
+                else:
+                    print("[dim]No new nodes to summarize.[/dim]")
+
+            except Exception as e:
+                print(f"[red]Error:[/red] {e}")
+                import traceback
+                traceback.print_exc()
+
+            if not daemon:
+                break
+
+            time.sleep(interval)
 @thread_app.command("move")
 def move_thread(
     thread_id: str = typer.Argument(..., help="Thread slug"),
@@ -1060,11 +1210,24 @@ def oracle_query(
     project_path = Path(".").resolve()
 
     # Check if API key is configured
+    # Oracle currently needs OpenRouter for synthesis, but in the future
+    # this will be handled server-side like the Librarian
     settings = Settings()
-    if not settings.openrouter_api_key:
-        console.print("[red]Error: No OpenRouter API key configured.[/red]")
-        console.print("Run: vlt config set-key <your-api-key>")
+    if not settings.openrouter_api_key and not settings.sync_token:
+        console.print("[red]Error: No API credentials configured.[/red]")
+        console.print()
+        console.print("Option 1 (Recommended): Configure server sync token:")
+        console.print("  vlt config set-key <your-sync-token>")
+        console.print()
+        console.print("Option 2 (Legacy): Set OpenRouter API key directly:")
+        console.print("  export VLT_OPENROUTER_API_KEY=<your-api-key>")
         raise typer.Exit(code=1)
+
+    # Warn if using legacy mode
+    if settings.openrouter_api_key and not settings.sync_token:
+        console.print("[yellow]Note: Using legacy OpenRouter mode. Consider migrating to server sync.[/yellow]")
+        console.print("[dim]Run: vlt config set-key <sync-token> --server <url>[/dim]")
+        console.print()
 
     # Display query
     console.print()

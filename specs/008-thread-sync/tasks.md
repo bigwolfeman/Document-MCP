@@ -24,10 +24,10 @@
 
 **Purpose**: Database schema and shared infrastructure
 
-- [ ] T001 Add thread tables DDL to backend/src/services/database.py (threads, thread_entries, thread_sync_status)
-- [ ] T002 Add FTS5 virtual table for thread_entries_fts in backend/src/services/database.py
-- [ ] T003 [P] Create Pydantic models in backend/src/models/thread.py (Thread, ThreadEntry, SyncRequest, SyncResponse, SyncStatus)
-- [ ] T004 Verify database migration runs successfully on backend startup
+- [x] T001 Add thread tables DDL to backend/src/services/database.py (threads, thread_entries, thread_sync_status)
+- [x] T002 Add FTS5 virtual table for thread_entries_fts in backend/src/services/database.py
+- [x] T003 [P] Create Pydantic models in backend/src/models/thread.py (Thread, ThreadEntry, SyncRequest, SyncResponse, SyncStatus)
+- [x] T004 Verify database migration runs successfully on backend startup
 
 ---
 
@@ -37,13 +37,13 @@
 
 **CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T005 Create ThreadService class in backend/src/services/thread_service.py with database connection
-- [ ] T006 Implement ThreadService.create_or_update_thread() in backend/src/services/thread_service.py
-- [ ] T007 Implement ThreadService.add_entries() in backend/src/services/thread_service.py
-- [ ] T008 Implement ThreadService.get_thread() in backend/src/services/thread_service.py
-- [ ] T009 Implement ThreadService.list_threads() in backend/src/services/thread_service.py
-- [ ] T010 Implement ThreadService.get_sync_status() in backend/src/services/thread_service.py
-- [ ] T011 Implement ThreadService.search_threads() for FTS5 queries in backend/src/services/thread_service.py
+- [x] T005 Create ThreadService class in backend/src/services/thread_service.py with database connection
+- [x] T006 Implement ThreadService.create_or_update_thread() in backend/src/services/thread_service.py
+- [x] T007 Implement ThreadService.add_entries() in backend/src/services/thread_service.py
+- [x] T008 Implement ThreadService.get_thread() in backend/src/services/thread_service.py
+- [x] T009 Implement ThreadService.list_threads() in backend/src/services/thread_service.py
+- [x] T010 Implement ThreadService.get_sync_status() in backend/src/services/thread_service.py
+- [x] T011 Implement ThreadService.search_threads() for FTS5 queries in backend/src/services/thread_service.py
 - [ ] T012 [P] Write pytest tests for ThreadService in backend/tests/unit/test_thread_service.py
 
 **Checkpoint**: ThreadService ready - user story implementation can now begin
@@ -58,27 +58,27 @@
 
 ### Backend API (US1)
 
-- [ ] T013 Create threads router in backend/src/api/routes/threads.py with APIRouter prefix="/api/threads"
-- [ ] T014 [US1] Implement POST /api/threads/sync endpoint in backend/src/api/routes/threads.py
-- [ ] T015 [US1] Implement GET /api/threads endpoint (list) in backend/src/api/routes/threads.py
-- [ ] T016 [US1] Implement GET /api/threads/{thread_id} endpoint in backend/src/api/routes/threads.py
-- [ ] T017 [US1] Implement GET /api/threads/{thread_id}/status endpoint in backend/src/api/routes/threads.py
-- [ ] T018 [US1] Implement DELETE /api/threads/{thread_id} endpoint in backend/src/api/routes/threads.py
-- [ ] T019 [US1] Register threads router in backend/src/api/main.py
+- [x] T013 Create threads router in backend/src/api/routes/threads.py with APIRouter prefix="/api/threads"
+- [x] T014 [US1] Implement POST /api/threads/sync endpoint in backend/src/api/routes/threads.py
+- [x] T015 [US1] Implement GET /api/threads endpoint (list) in backend/src/api/routes/threads.py
+- [x] T016 [US1] Implement GET /api/threads/{thread_id} endpoint in backend/src/api/routes/threads.py
+- [x] T017 [US1] Implement GET /api/threads/{thread_id}/status endpoint in backend/src/api/routes/threads.py
+- [x] T018 [US1] Implement DELETE /api/threads/{thread_id} endpoint in backend/src/api/routes/threads.py
+- [x] T019 [US1] Register threads router in backend/src/api/main.py
 - [ ] T020 [P] [US1] Write pytest tests for threads API in backend/tests/unit/test_threads_api.py
 
 ### CLI Sync Client (US1)
 
-- [ ] T021 [US1] Add sync_token field to Settings in packages/vlt-cli/src/vlt/config.py
-- [ ] T022 [US1] Create ThreadSyncClient class in packages/vlt-cli/src/vlt/core/sync.py with httpx async client
-- [ ] T023 [US1] Implement ThreadSyncClient.sync_entries() HTTP POST to vault_url/api/threads/sync
-- [ ] T024 [US1] Implement ThreadSyncClient.get_sync_status() HTTP GET from vault_url/api/threads/{id}/status
-- [ ] T025 [US1] Add SyncQueueItem model and queue file handling in packages/vlt-cli/src/vlt/core/sync.py
-- [ ] T026 [US1] Implement sync queue retry logic in packages/vlt-cli/src/vlt/core/sync.py
-- [ ] T027 [US1] Hook sync into thread push command in packages/vlt-cli/src/vlt/main.py (after add_thought)
-- [ ] T028 [US1] Add `vlt sync status` command in packages/vlt-cli/src/vlt/main.py
-- [ ] T029 [US1] Add `vlt sync retry` command in packages/vlt-cli/src/vlt/main.py
-- [ ] T030 [US1] Handle network errors gracefully with queue fallback in packages/vlt-cli/src/vlt/core/sync.py
+- [x] T021 [US1] Add sync_token field to Settings in packages/vlt-cli/src/vlt/config.py
+- [x] T022 [US1] Create ThreadSyncClient class in packages/vlt-cli/src/vlt/core/sync.py with httpx async client
+- [x] T023 [US1] Implement ThreadSyncClient.sync_entries() HTTP POST to vault_url/api/threads/sync
+- [x] T024 [US1] Implement ThreadSyncClient.get_sync_status() HTTP GET from vault_url/api/threads/{id}/status
+- [x] T025 [US1] Add SyncQueueItem model and queue file handling in packages/vlt-cli/src/vlt/core/sync.py
+- [x] T026 [US1] Implement sync queue retry logic in packages/vlt-cli/src/vlt/core/sync.py
+- [x] T027 [US1] Hook sync into thread push command in packages/vlt-cli/src/vlt/main.py (after add_thought)
+- [x] T028 [US1] Add `vlt sync status` command in packages/vlt-cli/src/vlt/main.py
+- [x] T029 [US1] Add `vlt sync retry` command in packages/vlt-cli/src/vlt/main.py
+- [x] T030 [US1] Handle network errors gracefully with queue fallback in packages/vlt-cli/src/vlt/core/sync.py
 
 **Checkpoint**: CLI can sync threads to backend. Test with `vlt thread push` and verify via API.
 
@@ -94,18 +94,18 @@
 
 ### Thread Search API (US3)
 
-- [ ] T031 [US3] Implement GET /api/threads/search endpoint in backend/src/api/routes/threads.py
+- [x] T031 [US3] Implement GET /api/threads/search endpoint in backend/src/api/routes/threads.py
 - [ ] T032 [P] [US3] Write pytest test for search endpoint in backend/tests/unit/test_threads_api.py
 
 ### Oracle Integration (US3)
 
-- [ ] T033 [US3] Create ThreadRetriever class in backend/src/services/thread_retriever.py
-- [ ] T034 [US3] Implement ThreadRetriever.search() using ThreadService.search_threads() in backend/src/services/thread_retriever.py
-- [ ] T035 [US3] Implement ThreadRetriever.format_citations() for source references in backend/src/services/thread_retriever.py
-- [ ] T036 [US3] Remove subprocess vlt oracle calls from backend/src/services/oracle_bridge.py
-- [ ] T037 [US3] Integrate ThreadRetriever into OracleBridge context assembly in backend/src/services/oracle_bridge.py
-- [ ] T038 [US3] Update OracleBridge.ask_oracle_stream() to query local threads in backend/src/services/oracle_bridge.py
-- [ ] T039 [US3] Add thread source type to SourceReference model in backend/src/models/oracle.py
+- [x] T033 [US3] Create ThreadRetriever class in backend/src/services/thread_retriever.py
+- [x] T034 [US3] Implement ThreadRetriever.search() using ThreadService.search_threads() in backend/src/services/thread_retriever.py
+- [x] T035 [US3] Implement ThreadRetriever.format_citations() for source references in backend/src/services/thread_retriever.py
+- [x] T036 [US3] Remove subprocess vlt oracle calls from backend/src/services/oracle_bridge.py
+- [x] T037 [US3] Integrate ThreadRetriever into OracleBridge context assembly in backend/src/services/oracle_bridge.py
+- [x] T038 [US3] Update OracleBridge.ask_oracle_stream() to query local threads in backend/src/services/oracle_bridge.py
+- [x] T039 [US3] Add thread source type to SourceReference model in backend/src/models/oracle.py
 - [ ] T040 [P] [US3] Write pytest tests for ThreadRetriever in backend/tests/unit/test_thread_retriever.py
 
 **Checkpoint**: Oracle queries include thread context. Test by syncing threads then asking Oracle about thread content.
@@ -116,12 +116,12 @@
 
 **Purpose**: Error handling, validation, documentation
 
-- [ ] T041 Add request validation (size limits, rate limiting) to /api/threads/sync in backend/src/api/routes/threads.py
-- [ ] T042 Add concurrent write handling (row locking) to ThreadService in backend/src/services/thread_service.py
-- [ ] T043 [P] Update quickstart.md with actual tested commands in specs/008-thread-sync/quickstart.md
-- [ ] T044 [P] Add logging for sync operations in packages/vlt-cli/src/vlt/core/sync.py
-- [ ] T045 Handle token expiry gracefully in CLI sync in packages/vlt-cli/src/vlt/core/sync.py
-- [ ] T046 Run full integration test: push thread via CLI, query via Oracle, verify citations
+- [x] T041 Add request validation (size limits, rate limiting) to /api/threads/sync in backend/src/api/routes/threads.py
+- [x] T042 Add concurrent write handling (row locking) to ThreadService in backend/src/services/thread_service.py
+- [x] T043 [P] Update quickstart.md with actual tested commands in specs/008-thread-sync/quickstart.md
+- [x] T044 [P] Add logging for sync operations in packages/vlt-cli/src/vlt/core/sync.py
+- [x] T045 Handle token expiry gracefully in CLI sync in packages/vlt-cli/src/vlt/core/sync.py
+- [x] T046 Run full integration test: push thread via CLI, query via Oracle, verify citations
 
 ---
 

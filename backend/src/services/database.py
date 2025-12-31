@@ -83,6 +83,56 @@ DDL_STATEMENTS: tuple[str, ...] = (
         updated TEXT NOT NULL
     )
     """,
+    # Thread Sync tables (T001)
+    """
+    CREATE TABLE IF NOT EXISTS threads (
+        user_id TEXT NOT NULL,
+        thread_id TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'archived', 'blocked')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, thread_id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_threads_user_project ON threads(user_id, project_id)",
+    "CREATE INDEX IF NOT EXISTS idx_threads_status ON threads(user_id, status)",
+    """
+    CREATE TABLE IF NOT EXISTS thread_entries (
+        user_id TEXT NOT NULL,
+        entry_id TEXT NOT NULL,
+        thread_id TEXT NOT NULL,
+        sequence_id INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        author TEXT NOT NULL DEFAULT 'user',
+        timestamp TEXT NOT NULL,
+        PRIMARY KEY (user_id, entry_id),
+        FOREIGN KEY (user_id, thread_id) REFERENCES threads(user_id, thread_id) ON DELETE CASCADE
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_entries_thread_seq ON thread_entries(user_id, thread_id, sequence_id)",
+    "CREATE INDEX IF NOT EXISTS idx_entries_timestamp ON thread_entries(user_id, timestamp)",
+    """
+    CREATE TABLE IF NOT EXISTS thread_sync_status (
+        user_id TEXT NOT NULL,
+        thread_id TEXT NOT NULL,
+        last_synced_sequence INTEGER NOT NULL DEFAULT -1,
+        last_sync_at TEXT NOT NULL,
+        sync_error TEXT,
+        PRIMARY KEY (user_id, thread_id),
+        FOREIGN KEY (user_id, thread_id) REFERENCES threads(user_id, thread_id) ON DELETE CASCADE
+    )
+    """,
+    # Thread entries FTS5 (T002)
+    """
+    CREATE VIRTUAL TABLE IF NOT EXISTS thread_entries_fts USING fts5(
+        content,
+        content='thread_entries',
+        content_rowid=rowid,
+        tokenize='porter unicode61'
+    )
+    """,
 )
 
 # Migration statements for existing databases
