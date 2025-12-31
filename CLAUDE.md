@@ -4,9 +4,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Document-MCP** is a multi-tenant Obsidian-like documentation viewer with AI-first workflow. AI agents write/update documentation via MCP (Model Context Protocol), while humans read and edit through a web UI. The system provides per-user vaults with Markdown notes, full-text search (SQLite FTS5), wikilink resolution, tag indexing, and backlink tracking.
+**Vlt-Bridge** (formerly Document-MCP) is a monorepo containing:
+1. **Document-MCP**: Multi-tenant Obsidian-like documentation viewer with AI-first workflow
+2. **vlt-cli**: AI memory and context retrieval CLI tool with CodeRAG
 
-**Architecture**: Python 3.11+ backend (FastAPI + FastMCP) + React 19 frontend (Vite 7 + shadcn/ui)
+AI agents write/update documentation via MCP (Model Context Protocol), while humans read and edit through a web UI. The system provides per-user vaults with Markdown notes, full-text search (SQLite FTS5), wikilink resolution, tag indexing, and backlink tracking.
+
+**Vlt Oracle**: Multi-source intelligent context retrieval for AI coding agents, combining:
+- **vlt threads**: Development history and memory
+- **Markdown vault**: Documentation (Document-MCP)
+- **CodeRAG**: Code understanding with hybrid retrieval (vector + BM25 + graph)
+
+**Architecture**: Python 3.11+ backend (FastAPI + FastMCP) + React 19 frontend (Vite 7 + shadcn/ui) + vlt-cli (Python CLI)
+
+## Monorepo Structure
+
+```
+Vlt-Bridge/
+├── backend/           # Document-MCP FastAPI backend
+├── frontend/          # Document-MCP React frontend
+├── packages/
+│   └── vlt-cli/       # vlt CLI tool (memory, threads, oracle, coderag)
+├── specs/             # Feature specifications (SpecKit)
+└── data/              # Local data (vaults, indexes)
+```
 
 **Key Concepts**:
 - **Vault**: Per-user filesystem directory containing .md files

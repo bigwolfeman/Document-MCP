@@ -369,6 +369,350 @@ def get_tags() -> List[Dict[str, Any]]:
     return indexer_service.get_tags(user_id)
 
 
+# ============================================================================
+# Oracle & Code Intelligence Tools (Vlt Oracle Feature)
+# ============================================================================
+
+from ..services.oracle_bridge import OracleBridge, OracleBridgeError
+
+oracle_bridge = OracleBridge()
+
+
+@mcp.tool(
+    name="ask_oracle",
+    description=(
+        "Ask a question about the codebase. Searches across documentation (markdown vault), "
+        "code (functions, classes, imports), and development history (past decisions, debugging sessions). "
+        "Returns a synthesized answer with source citations. Use for conceptual questions, "
+        "understanding code behavior, or finding how things work."
+    ),
+)
+async def ask_oracle(
+    question: str = Field(
+        ...,
+        description="Natural language question about the codebase",
+        min_length=1,
+        max_length=2000,
+    ),
+    sources: Optional[List[str]] = Field(
+        default=None,
+        description="Knowledge sources to query. Omit to query all sources.",
+    ),
+    explain: bool = Field(
+        default=False,
+        description="Include retrieval traces for debugging",
+    ),
+) -> Dict[str, Any]:
+    """Ask Oracle a question about the codebase."""
+    start_time = time.time()
+    user_id = _current_user_id()
+
+    try:
+        # Call vlt oracle via bridge
+        result = await oracle_bridge.ask_oracle(
+            question=question,
+            sources=sources,
+            explain=explain,
+        )
+
+        duration_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "MCP tool called",
+            extra={
+                "tool_name": "ask_oracle",
+                "user_id": user_id,
+                "question_length": len(question),
+                "sources": sources or "all",
+                "duration_ms": f"{duration_ms:.2f}",
+            },
+        )
+
+        return result
+
+    except OracleBridgeError as exc:
+        logger.error(f"Oracle query failed: {exc.message}", extra=exc.details)
+        return {
+            "error": exc.message,
+            "details": exc.details,
+            "answer": "Sorry, I encountered an error while processing your question.",
+            "sources": [],
+        }
+
+
+@mcp.tool(
+    name="search_code",
+    description=(
+        "Search code using hybrid retrieval (semantic vector search + exact keyword match). "
+        "Returns ranked code chunks with context. Use when you need to find specific code patterns, "
+        "function implementations, or explore the codebase."
+    ),
+)
+async def search_code(
+    query: str = Field(
+        ...,
+        description="Search query - can be natural language or code pattern",
+        min_length=1,
+        max_length=500,
+    ),
+    limit: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum results to return",
+    ),
+    language: Optional[str] = Field(
+        default=None,
+        description="Filter by programming language",
+    ),
+    file_pattern: Optional[str] = Field(
+        default=None,
+        description="Glob pattern to filter files (e.g., 'src/**/*.py')",
+    ),
+) -> Dict[str, Any]:
+    """Search code using hybrid retrieval."""
+    start_time = time.time()
+    user_id = _current_user_id()
+
+    try:
+        result = await oracle_bridge.search_code(
+            query=query,
+            limit=limit,
+            language=language,
+            file_pattern=file_pattern,
+        )
+
+        duration_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "MCP tool called",
+            extra={
+                "tool_name": "search_code",
+                "user_id": user_id,
+                "query": query,
+                "limit": limit,
+                "duration_ms": f"{duration_ms:.2f}",
+            },
+        )
+
+        return result
+
+    except OracleBridgeError as exc:
+        logger.error(f"Code search failed: {exc.message}", extra=exc.details)
+        return {
+            "error": exc.message,
+            "details": exc.details,
+            "results": [],
+            "total_matches": 0,
+        }
+
+
+@mcp.tool(
+    name="find_definition",
+    description=(
+        "Find where a symbol (function, class, variable) is defined. Uses code intelligence "
+        "(ctags/SCIP) for exact lookup, not fuzzy search. Returns precise file:line location. "
+        "Use when you need to navigate to a symbol's definition."
+    ),
+)
+async def find_definition(
+    symbol: str = Field(
+        ...,
+        description="Symbol name to find (e.g., 'UserService', 'authenticate', 'MAX_RETRIES')",
+        min_length=1,
+        max_length=256,
+    ),
+    scope: Optional[str] = Field(
+        default=None,
+        description="Optional file path to narrow search (e.g., 'src/services/')",
+    ),
+    kind: Optional[str] = Field(
+        default=None,
+        description="Symbol kind to filter",
+    ),
+) -> Dict[str, Any]:
+    """Find where a symbol is defined."""
+    start_time = time.time()
+    user_id = _current_user_id()
+
+    try:
+        result = await oracle_bridge.find_definition(
+            symbol=symbol,
+            scope=scope,
+            kind=kind,
+        )
+
+        duration_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "MCP tool called",
+            extra={
+                "tool_name": "find_definition",
+                "user_id": user_id,
+                "symbol": symbol,
+                "duration_ms": f"{duration_ms:.2f}",
+            },
+        )
+
+        # Transform oracle response to match expected schema
+        # This is a workaround until vlt-cli has dedicated definition command
+        return {
+            "found": "answer" in result and len(result.get("sources", [])) > 0,
+            "definitions": result.get("sources", []),
+            "lookup_method": "semantic",  # Since we're using oracle as workaround
+        }
+
+    except OracleBridgeError as exc:
+        logger.error(f"Find definition failed: {exc.message}", extra=exc.details)
+        return {
+            "error": exc.message,
+            "details": exc.details,
+            "found": False,
+            "definitions": [],
+            "lookup_method": "error",
+        }
+
+
+@mcp.tool(
+    name="find_references",
+    description=(
+        "Find all usages/references of a symbol. Uses call graph and code intelligence to find "
+        "where a function is called, where a class is instantiated, etc. Returns all locations "
+        "with context. Use when you need to understand impact of changes or find usage patterns."
+    ),
+)
+async def find_references(
+    symbol: str = Field(
+        ...,
+        description="Symbol name to find references for",
+        min_length=1,
+        max_length=256,
+    ),
+    limit: int = Field(
+        default=20,
+        ge=1,
+        le=100,
+        description="Maximum references to return",
+    ),
+    include_definition: bool = Field(
+        default=False,
+        description="Include the definition in results",
+    ),
+    reference_type: str = Field(
+        default="all",
+        description="Type of references to find",
+    ),
+) -> Dict[str, Any]:
+    """Find all references to a symbol."""
+    start_time = time.time()
+    user_id = _current_user_id()
+
+    try:
+        result = await oracle_bridge.find_references(
+            symbol=symbol,
+            limit=limit,
+            include_definition=include_definition,
+            reference_type=reference_type,
+        )
+
+        duration_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "MCP tool called",
+            extra={
+                "tool_name": "find_references",
+                "user_id": user_id,
+                "symbol": symbol,
+                "duration_ms": f"{duration_ms:.2f}",
+            },
+        )
+
+        # Transform oracle response to match expected schema
+        sources = result.get("sources", [])
+        return {
+            "found": len(sources) > 0,
+            "references": sources,
+            "total_count": len(sources),
+            "lookup_method": "semantic",  # Since we're using oracle as workaround
+        }
+
+    except OracleBridgeError as exc:
+        logger.error(f"Find references failed: {exc.message}", extra=exc.details)
+        return {
+            "error": exc.message,
+            "details": exc.details,
+            "found": False,
+            "references": [],
+            "total_count": 0,
+            "lookup_method": "error",
+        }
+
+
+@mcp.tool(
+    name="get_repo_map",
+    description=(
+        "Get codebase structure overview. Returns an Aider-style repository map showing files, "
+        "classes, functions, and their signatures. Prioritizes important symbols using graph centrality. "
+        "Use when you need to understand the overall codebase structure or navigate to relevant areas."
+    ),
+)
+async def get_repo_map(
+    scope: Optional[str] = Field(
+        default=None,
+        description="Subdirectory to focus on (e.g., 'src/api/'). Omit for entire repo.",
+    ),
+    max_tokens: int = Field(
+        default=4000,
+        ge=1000,
+        le=16000,
+        description="Maximum tokens for the map (controls pruning)",
+    ),
+    include_signatures: bool = Field(
+        default=True,
+        description="Include function/method signatures",
+    ),
+    include_docstrings: bool = Field(
+        default=False,
+        description="Include brief docstrings",
+    ),
+) -> Dict[str, Any]:
+    """Get repository structure map."""
+    start_time = time.time()
+    user_id = _current_user_id()
+
+    try:
+        result = await oracle_bridge.get_repo_map(
+            scope=scope,
+            max_tokens=max_tokens,
+            include_signatures=include_signatures,
+            include_docstrings=include_docstrings,
+        )
+
+        duration_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "MCP tool called",
+            extra={
+                "tool_name": "get_repo_map",
+                "user_id": user_id,
+                "scope": scope or "entire_repo",
+                "duration_ms": f"{duration_ms:.2f}",
+            },
+        )
+
+        return result
+
+    except OracleBridgeError as exc:
+        logger.error(f"Get repo map failed: {exc.message}", extra=exc.details)
+        return {
+            "error": exc.message,
+            "details": exc.details,
+            "map": "Error generating repository map",
+            "stats": {
+                "files_included": 0,
+                "symbols_included": 0,
+                "symbols_total": 0,
+                "token_count": 0,
+            },
+            "scope_applied": scope,
+        }
+
+
 if __name__ == "__main__":
     transport = os.getenv("MCP_TRANSPORT", "stdio").strip().lower() or "stdio"
 

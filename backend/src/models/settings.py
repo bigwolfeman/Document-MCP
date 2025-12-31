@@ -1,0 +1,69 @@
+"""Pydantic models for user settings and model providers."""
+
+from enum import Enum
+from typing import Optional, List
+from pydantic import BaseModel, Field
+
+
+class ModelProvider(str, Enum):
+    """Available model providers."""
+    OPENROUTER = "openrouter"
+    GOOGLE = "google"
+
+
+class ModelSettings(BaseModel):
+    """User's model preferences for oracle and subagent."""
+    oracle_model: str = Field(
+        default="gemini-2.0-flash-exp",
+        description="Model to use for oracle queries"
+    )
+    oracle_provider: ModelProvider = Field(
+        default=ModelProvider.GOOGLE,
+        description="Provider for oracle model"
+    )
+    subagent_model: str = Field(
+        default="gemini-2.0-flash-exp",
+        description="Model to use for subagent tasks"
+    )
+    subagent_provider: ModelProvider = Field(
+        default=ModelProvider.GOOGLE,
+        description="Provider for subagent model"
+    )
+    thinking_enabled: bool = Field(
+        default=False,
+        description="Enable extended thinking mode (adds :thinking suffix for supported models)"
+    )
+
+
+class ModelInfo(BaseModel):
+    """Information about an available model."""
+    id: str = Field(..., description="Model identifier (e.g., 'deepseek/deepseek-chat')")
+    name: str = Field(..., description="Human-readable model name")
+    provider: ModelProvider = Field(..., description="Model provider")
+    is_free: bool = Field(default=False, description="Whether the model is free to use")
+    supports_thinking: bool = Field(
+        default=False,
+        description="Whether model supports :thinking suffix for extended reasoning"
+    )
+    context_length: Optional[int] = Field(
+        None,
+        description="Maximum context length in tokens"
+    )
+    description: Optional[str] = Field(
+        None,
+        description="Model description"
+    )
+
+
+class ModelsListResponse(BaseModel):
+    """Response containing available models."""
+    models: List[ModelInfo] = Field(default_factory=list, description="List of available models")
+
+
+class ModelSettingsUpdateRequest(BaseModel):
+    """Request to update user model settings."""
+    oracle_model: Optional[str] = None
+    oracle_provider: Optional[ModelProvider] = None
+    subagent_model: Optional[str] = None
+    subagent_provider: Optional[ModelProvider] = None
+    thinking_enabled: Optional[bool] = None

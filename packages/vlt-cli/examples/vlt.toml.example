@@ -1,0 +1,86 @@
+# Example vlt.toml configuration file
+# This file should be placed at the root of your project
+
+[project]
+name = "my-project"
+id = "my-project"
+description = "A sample project using vlt-cli with Oracle feature"
+
+# ============================================================================
+# CodeRAG Configuration
+# Configure how code is indexed and retrieved for semantic search
+# ============================================================================
+
+[coderag]
+# File patterns to include in indexing (glob patterns)
+include = [
+    "src/**/*.py",
+    "lib/**/*.py",
+    "tests/**/*.py"
+]
+
+# File patterns to exclude from indexing
+exclude = [
+    "**/node_modules/**",
+    "**/__pycache__/**",
+    "**/.git/**",
+    "**/dist/**",
+    "**/build/**"
+]
+
+# Programming languages to index
+languages = ["python", "typescript", "javascript"]
+
+# --- Embedding Configuration ---
+[coderag.embedding]
+# Embedding model for semantic code search
+# Options: "qwen/qwen3-embedding-8b", "openai/text-embedding-3-small", etc.
+model = "qwen/qwen3-embedding-8b"
+
+# Number of chunks to embed in one batch (affects performance)
+batch_size = 10
+
+# --- Repository Map Configuration ---
+[coderag.repomap]
+# Maximum tokens for generated repository map
+max_tokens = 4000
+
+# Include function/method signatures in repo map
+include_signatures = true
+
+# Include docstrings in repo map (makes map more verbose)
+include_docstrings = false
+
+# --- Delta-Based Indexing Configuration ---
+[coderag.delta]
+# Commit index updates after N files changed
+file_threshold = 5
+
+# Commit index updates after N total lines changed
+line_threshold = 1000
+
+# Commit index updates after N seconds of inactivity
+timeout_seconds = 300
+
+# Index queued files on-demand if they match a query (JIT indexing)
+jit_indexing = true
+
+# ============================================================================
+# Oracle Configuration
+# Configure the Oracle AI assistant behavior
+# ============================================================================
+
+[oracle]
+# URL to Document-MCP vault for markdown documentation
+vault_url = "http://localhost:8000"
+
+# LLM model for synthesizing answers from retrieved context
+# Options: "anthropic/claude-sonnet-4", "openai/gpt-4", "openai/gpt-4o", etc.
+synthesis_model = "anthropic/claude-sonnet-4"
+
+# LLM model for reranking search results (use cheaper model)
+# Options: "openai/gpt-4o-mini", "anthropic/claude-haiku-4", etc.
+rerank_model = "openai/gpt-4o-mini"
+
+# Maximum tokens for assembled context (code + vault + threads + repo map)
+max_context_tokens = 16000

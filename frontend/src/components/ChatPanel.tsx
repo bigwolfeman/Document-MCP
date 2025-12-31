@@ -1,12 +1,13 @@
-import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2 } from 'lucide-react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { Send, Loader2, Settings, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ChatMessage } from './ChatMessage';
-import { sendChat } from '@/services/rag';
-import type { ChatMessage as ChatMessageType } from '@/types/rag';
+import { SlashCommandMenu } from './SlashCommandMenu';
+import { streamOracle, exportConversationAsMarkdown, downloadAsFile, compactHistory } from '@/services/oracle';
+import type { OracleMessage, SlashCommand, OracleStreamChunk, SourceType, RetrievalResult } from '@/types/oracle';
 import { useToast } from '@/hooks/useToast';
-import { APIException } from '@/services/api';
+import { Badge } from '@/components/ui/badge';
 
 interface ChatPanelProps {
   onNavigateToNote: (path: string) => void;
@@ -14,10 +15,19 @@ interface ChatPanelProps {
 }
 
 export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) {
-  const [messages, setMessages] = useState<ChatMessageType[]>([]);
+  const [messages, setMessages] = useState<OracleMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
+  const [currentModel, setCurrentModel] = useState('');
+  const [showThinking, setShowThinking] = useState(true);
+  const [showSources, setShowSources] = useState(true);
+  const [activeSources, setActiveSources] = useState<SourceType[]>(['vault', 'code', 'threads']);
+  const [showCommandMenu, setShowCommandMenu] = useState(false);
+  const [commandFilter, setCommandFilter] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const toast = useToast();
 
   // Auto-scroll to bottom
@@ -27,60 +37,180 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
     }
   }, [messages]);
 
+  // Slash commands
+  const slashCommands = useMemo<SlashCommand[]>(
+    () => [
+      {
+        name: 'clear',
+        description: 'Clear conversation history',
+        shortcut: 'Ctrl+K',
+        handler: () => {
+          setMessages([]);
+          setInput('');
+          toast.success('Conversation cleared');
+        },
+      },
+      {
+        name: 'compact',
+        description: 'Summarize and compress conversation',
+        handler: async () => {
+          const compressed = await compactHistory(messages);
+          setMessages(compressed);
+          toast.success('Conversation compacted');
+        },
+      },
+      {
+        name: 'context',
+        description: 'Show current context sources being used',
+        handler: () => {
+          const contextInfo = `Active sources: ${activeSources.join(', ')}`;
+          toast.info(contextInfo);
+        },
+      },
+      {
+        name: 'help',
+        description: 'Show available slash commands',
+        handler: () => {
+          setShowCommandMenu(true);
+          setCommandFilter('');
+        },
+      },
+      {
+        name: 'models',
+        description: 'Quick switch model (current: auto)',
+        handler: () => {
+          toast.info('Model selection coming soon');
+        },
+      },
+      {
+        name: 'sources',
+        description: 'Toggle source display on/off',
+        handler: () => {
+          setShowSources((prev) => !prev);
+          toast.success(`Sources ${!showSources ? 'shown' : 'hidden'}`);
+        },
+      },
+      {
+        name: 'thinking',
+        description: 'Toggle thinking mode display',
+        handler: () => {
+          setShowThinking((prev) => !prev);
+          toast.success(`Thinking ${!showThinking ? 'shown' : 'hidden'}`);
+        },
+      },
+      {
+        name: 'export',
+        description: 'Export conversation as markdown',
+        handler: () => {
+          const markdown = exportConversationAsMarkdown(messages);
+          const filename = `oracle-conversation-${new Date().toISOString().split('T')[0]}.md`;
+          downloadAsFile(markdown, filename);
+          toast.success('Conversation exported');
+        },
+      },
+    ],
+    [messages, activeSources, showSources, showThinking, toast]
+  );
+
   const handleSubmit = async () => {
     if (!input.trim() || isLoading) return;
 
-    const userMsg: ChatMessageType = {
+    const trimmedInput = input.trim();
+
+    // Handle slash commands
+    if (trimmedInput.startsWith('/')) {
+      const commandName = trimmedInput.substring(1).split(' ')[0];
+      const command = slashCommands.find((cmd) => cmd.name === commandName);
+
+      if (command) {
+        command.handler();
+        setInput('');
+        setShowCommandMenu(false);
+        return;
+      }
+    }
+
+    const userMsg: OracleMessage = {
       role: 'user',
-      content: input.trim(),
-      timestamp: new Date().toISOString()
+      content: trimmedInput,
+      timestamp: new Date().toISOString(),
     };
 
-    // Construct new history immediately
-    const newHistory = [...messages, userMsg];
-
-    // Optimistically update UI
-    setMessages(newHistory);
+    // Add user message
+    setMessages((prev) => [...prev, userMsg]);
     setInput('');
     setIsLoading(true);
+    setStatusMessage('Searching...');
+
+    // Create assistant message placeholder
+    const assistantMsg: OracleMessage = {
+      role: 'assistant',
+      content: '',
+      timestamp: new Date().toISOString(),
+      thinking: '',
+      sources: [],
+    };
+
+    setMessages((prev) => [...prev, assistantMsg]);
+
+    // Create abort controller for this request
+    abortControllerRef.current = new AbortController();
 
     try {
-      const response = await sendChat({ messages: newHistory });
-      
-      const assistantMsg: ChatMessageType = {
-        role: 'assistant',
-        content: response.answer,
-        timestamp: new Date().toISOString(),
-        sources: response.sources,
-        notes_written: response.notes_written
-      };
+      await streamOracle(
+        {
+          question: trimmedInput,
+          sources: activeSources,
+          max_results: 10,
+        },
+        (chunk: OracleStreamChunk) => {
+          setMessages((prev) => {
+            const updated = [...prev];
+            const lastMsg = updated[updated.length - 1];
 
-      setMessages(prev => [...prev, assistantMsg]);
+            if (lastMsg.role === 'assistant') {
+              if (chunk.type === 'status') {
+                setStatusMessage(chunk.message || '');
+              } else if (chunk.type === 'thinking') {
+                lastMsg.thinking = (lastMsg.thinking || '') + (chunk.content || '');
+              } else if (chunk.type === 'content') {
+                lastMsg.content += chunk.content || '';
+              } else if (chunk.type === 'source' && chunk.source) {
+                if (!lastMsg.sources) lastMsg.sources = [];
+                lastMsg.sources.push(chunk.source);
+              } else if (chunk.type === 'done') {
+                lastMsg.model = chunk.model;
+                setStatusMessage('');
+              } else if (chunk.type === 'error') {
+                lastMsg.is_error = true;
+                lastMsg.content = chunk.error || 'Unknown error occurred';
+              }
+            }
 
-      // Trigger refresh if notes were created/updated
-      if (response.notes_written && response.notes_written.length > 0) {
-        console.log('[ChatPanel] Notes written:', response.notes_written);
-        if (onNotesChanged) {
-          console.log('[ChatPanel] Calling onNotesChanged()');
-          await onNotesChanged();
-          console.log('[ChatPanel] onNotesChanged() completed');
-        } else {
-          console.error('[ChatPanel] onNotesChanged is undefined!');
-        }
-      } else {
-        console.log('[ChatPanel] No notes written, skipping refresh');
-      }
+            return updated;
+          });
+        },
+        abortControllerRef.current.signal
+      );
     } catch (err) {
-      console.error("Chat error:", err);
-      let errorMessage = "Failed to get response from agent";
-      if (err instanceof APIException) {
-        errorMessage = err.message || err.error;
-      } else if (err instanceof Error) {
-        errorMessage = err.message;
-      }
+      console.error('Oracle error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to get response';
+
+      setMessages((prev) => {
+        const updated = [...prev];
+        const lastMsg = updated[updated.length - 1];
+        if (lastMsg.role === 'assistant') {
+          lastMsg.is_error = true;
+          lastMsg.content = errorMessage;
+        }
+        return updated;
+      });
+
       toast.error(errorMessage);
     } finally {
       setIsLoading(false);
+      setStatusMessage('');
+      abortControllerRef.current = null;
     }
   };
 
@@ -91,20 +221,75 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
     }
   };
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setInput(value);
+
+    // Show command menu when typing slash
+    if (value.startsWith('/') && value.length > 1) {
+      setShowCommandMenu(true);
+      setCommandFilter(value.substring(1));
+    } else {
+      setShowCommandMenu(false);
+      setCommandFilter('');
+    }
+  };
+
+  const handleCommandSelect = (command: SlashCommand) => {
+    command.handler();
+    setInput('');
+    setShowCommandMenu(false);
+    textareaRef.current?.focus();
+  };
+
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Header */}
       <div className="p-4 border-b border-border">
-        <h2 className="font-semibold">Gemini Planning Agent</h2>
-        <p className="text-xs text-muted-foreground">Ask questions about your vault</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold">Vlt Oracle</h2>
+            <p className="text-xs text-muted-foreground">
+              Multi-source intelligent context retrieval
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {currentModel && (
+              <Badge variant="outline" className="text-xs">
+                {currentModel}
+              </Badge>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setShowCommandMenu(true)}
+              title="Show commands"
+            >
+              <Info className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+        {activeSources.length < 3 && (
+          <div className="mt-2 flex gap-1">
+            <span className="text-xs text-muted-foreground">Active sources:</span>
+            {activeSources.map((source) => (
+              <Badge key={source} variant="secondary" className="text-xs">
+                {source}
+              </Badge>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Message List */}
-      <div className="flex-1 overflow-y-auto" ref={scrollRef}>
+      <div className="flex-1 overflow-y-auto relative" ref={scrollRef}>
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-8 text-center">
-            <p>👋 Hi! I can help you navigate this vault.</p>
-            <p className="text-sm mt-2">Try asking: "How does authentication work?"</p>
+            <p className="text-base">Ask Oracle anything about your project</p>
+            <p className="text-sm mt-2">
+              Try: "How does authentication work?" or type <kbd className="px-2 py-1 bg-muted rounded text-xs">/help</kbd>
+            </p>
           </div>
         ) : (
           <div className="divide-y divide-border/50">
@@ -113,13 +298,14 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
                 key={i}
                 message={msg}
                 onSourceClick={onNavigateToNote}
-                onRefreshNeeded={onNotesChanged}
+                showThinking={showThinking}
+                showSources={showSources}
               />
             ))}
-            {isLoading && (
+            {isLoading && statusMessage && (
               <div className="p-4 flex items-center gap-2 text-muted-foreground text-sm">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Thinking...
+                {statusMessage}
               </div>
             )}
           </div>
@@ -127,19 +313,38 @@ export function ChatPanel({ onNavigateToNote, onNotesChanged }: ChatPanelProps) 
       </div>
 
       {/* Input Area */}
-      <div className="p-4 pb-14 border-t border-border">
+      <div className="p-4 pb-14 border-t border-border relative">
+        {showCommandMenu && (
+          <SlashCommandMenu
+            commands={slashCommands}
+            onSelect={handleCommandSelect}
+            onClose={() => setShowCommandMenu(false)}
+            filterText={commandFilter}
+            position={{ top: -20, left: 0 }}
+          />
+        )}
         <div className="flex gap-2">
           <Textarea
+            ref={textareaRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="Ask a question..."
+            placeholder="Ask a question or type / for commands..."
             className="min-h-[40px] max-h-[150px] resize-none"
             rows={1}
+            disabled={isLoading}
           />
           <Button onClick={handleSubmit} disabled={isLoading || !input.trim()} size="icon">
             <Send className="h-4 w-4" />
           </Button>
+        </div>
+        <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+          <span>
+            Type <kbd className="px-1 py-0.5 bg-muted rounded">/</kbd> for commands
+          </span>
+          {messages.length > 0 && (
+            <span>{messages.length} messages</span>
+          )}
         </div>
       </div>
     </div>

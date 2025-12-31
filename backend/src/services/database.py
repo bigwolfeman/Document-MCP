@@ -70,6 +70,18 @@ DDL_STATEMENTS: tuple[str, ...] = (
         last_incremental_update TEXT
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS user_settings (
+        user_id TEXT PRIMARY KEY,
+        oracle_model TEXT NOT NULL DEFAULT 'gemini-2.0-flash-exp',
+        oracle_provider TEXT NOT NULL DEFAULT 'google',
+        subagent_model TEXT NOT NULL DEFAULT 'gemini-2.0-flash-exp',
+        subagent_provider TEXT NOT NULL DEFAULT 'google',
+        thinking_enabled INTEGER NOT NULL DEFAULT 0,
+        created TEXT NOT NULL,
+        updated TEXT NOT NULL
+    )
+    """,
 )
 
 

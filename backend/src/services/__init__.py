@@ -4,6 +4,7 @@ from .auth import AuthError, AuthService
 from .config import AppConfig, get_config, reload_config
 from .database import DatabaseService, init_database
 from .indexer import IndexerService, normalize_slug, normalize_tag
+from .oracle_bridge import OracleBridge, OracleBridgeError
 from .vault import VaultNote, VaultService, sanitize_path, validate_note_path
 
 __all__ = [
@@ -21,4 +22,6 @@ __all__ = [
     "IndexerService",
     "normalize_slug",
     "normalize_tag",
+    "OracleBridge",
+    "OracleBridgeError",
 ]
