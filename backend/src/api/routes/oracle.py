@@ -1,4 +1,11 @@
-"""Oracle API endpoints - Multi-source intelligent context retrieval."""
+"""Oracle API endpoints - Multi-source intelligent context retrieval.
+
+This module provides the Oracle Agent API which uses OpenRouter function calling
+for autonomous tool execution. The Oracle can search code, read documentation,
+query development threads, and search the web to answer questions.
+
+Updated for 009-oracle-agent: Uses OracleAgent instead of OracleBridge subprocess.
+"""
 
 from __future__ import annotations
 
@@ -19,6 +26,7 @@ from ...models.oracle import (
     ConversationMessage,
     SourceReference,
 )
+from ...services.oracle_agent import OracleAgent, OracleAgentError
 from ...services.oracle_bridge import OracleBridge, OracleBridgeError
 from ...services.user_settings import UserSettingsService, get_user_settings_service
 
@@ -26,12 +34,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/oracle", tags=["oracle"])
 
-# Singleton oracle bridge instance
+# Singleton oracle bridge instance (kept for fallback/deprecation period)
 _oracle_bridge: OracleBridge | None = None
 
 
 def get_oracle_bridge() -> OracleBridge:
-    """Get or create the oracle bridge instance."""
+    """Get or create the oracle bridge instance (deprecated, use OracleAgent)."""
     global _oracle_bridge
     if _oracle_bridge is None:
         _oracle_bridge = OracleBridge()
@@ -42,19 +50,19 @@ def get_oracle_bridge() -> OracleBridge:
 async def query_oracle(
     request: OracleRequest,
     auth: AuthContext = Depends(get_auth_context),
-    oracle: OracleBridge = Depends(get_oracle_bridge),
+    settings_service: UserSettingsService = Depends(get_user_settings_service),
 ):
     """
     Query the oracle with a natural language question (non-streaming).
 
-    The oracle queries multiple knowledge sources (vault, code, threads) and
-    returns a synthesized answer with source citations.
+    Uses the OracleAgent with OpenRouter function calling for autonomous
+    tool execution. This endpoint collects the full response before returning.
 
     **Request Body:**
     - `question`: Natural language question (required)
     - `sources`: List of sources to query ("vault", "code", "threads") - null means all
     - `explain`: Include retrieval traces for debugging (default: false)
-    - `model`: Override LLM model (e.g., "anthropic/claude-3.5-sonnet")
+    - `model`: Override LLM model (e.g., "anthropic/claude-sonnet-4")
     - `thinking`: Enable thinking mode for extended reasoning (default: false)
     - `max_tokens`: Maximum context tokens (default: 16000)
 
@@ -65,36 +73,68 @@ async def query_oracle(
     - `model_used`: Model that generated the response
     - `retrieval_traces`: Debug information (if explain=True)
     """
+    # Get user's OpenRouter API key
+    openrouter_api_key = settings_service.get_openrouter_api_key(auth.user_id)
+
+    if not openrouter_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OpenRouter API key not configured. Please add your API key in Settings.",
+        )
+
     try:
         logger.info(f"Oracle query from user {auth.user_id}: {request.question[:100]}")
 
-        # Call oracle bridge (non-streaming)
-        result = await oracle.ask_oracle(
+        # Create OracleAgent
+        agent = OracleAgent(
+            api_key=openrouter_api_key,
+            model=request.model,
+            project_id=None,  # TODO: Get from request or detect
+            user_id=auth.user_id,
+        )
+
+        # Collect all chunks from the stream
+        content_parts = []
+        sources = []
+        tokens_used = None
+        model_used = None
+
+        async for chunk in agent.query(
             question=request.question,
-            sources=request.sources,
-            explain=request.explain,
-            project=None,  # Auto-detect project
+            user_id=auth.user_id,
+            stream=False,  # Non-streaming mode
+            thinking=request.thinking,
             max_tokens=request.max_tokens,
-        )
+        ):
+            if chunk.type == "content" and chunk.content:
+                content_parts.append(chunk.content)
+            elif chunk.type == "source" and chunk.source:
+                sources.append(chunk.source)
+            elif chunk.type == "done":
+                tokens_used = chunk.tokens_used
+                model_used = chunk.model_used
+            elif chunk.type == "error":
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=chunk.error or "Oracle query failed",
+                )
 
-        # Transform response to match our schema
         return OracleResponse(
-            answer=result.get("answer", ""),
-            sources=[
-                SourceReference(**source) if isinstance(source, dict) else source
-                for source in result.get("sources", [])
-            ],
-            tokens_used=result.get("tokens_used"),
-            model_used=result.get("model_used"),
-            retrieval_traces=result.get("retrieval_traces") if request.explain else None,
+            answer="".join(content_parts),
+            sources=sources,
+            tokens_used=tokens_used,
+            model_used=model_used,
+            retrieval_traces=None,  # TODO: Implement if explain=True
         )
 
-    except OracleBridgeError as e:
-        logger.error(f"Oracle bridge error: {e.message}")
+    except OracleAgentError as e:
+        logger.error(f"Oracle agent error: {e.message}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Oracle error: {e.message}",
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Oracle query failed")
         raise HTTPException(
@@ -107,14 +147,19 @@ async def query_oracle(
 async def query_oracle_stream(
     request: OracleRequest,
     auth: AuthContext = Depends(get_auth_context),
-    oracle: OracleBridge = Depends(get_oracle_bridge),
     settings_service: UserSettingsService = Depends(get_user_settings_service),
 ):
     """
     Query the oracle with streaming response (Server-Sent Events).
 
+    Uses the OracleAgent with OpenRouter function calling for autonomous
+    tool execution. The agent can search code, read documentation, query
+    threads, and search the web to gather context before answering.
+
     The response streams as Server-Sent Events (SSE) with the following chunk types:
     - `thinking`: Progress updates during retrieval
+    - `tool_call`: Tool being invoked (with id, name, arguments)
+    - `tool_result`: Result from tool execution
     - `content`: Answer text chunks
     - `source`: Source citations
     - `done`: Final chunk with metadata (tokens_used, model_used)
@@ -124,47 +169,51 @@ async def query_oracle_stream(
 
     **Response:** SSE stream of JSON objects
 
-    **Example chunk:**
+    **Example chunks:**
     ```json
+    data: {"type": "tool_call", "tool_call": {"name": "search_code", "arguments": "..."}}
     data: {"type": "content", "content": "Based on the code..."}
     ```
     """
     # Get user's OpenRouter API key
     openrouter_api_key = settings_service.get_openrouter_api_key(auth.user_id)
 
+    if not openrouter_api_key:
+        # Return error if no API key configured
+        async def error_generator():
+            error_chunk = OracleStreamChunk(
+                type="error",
+                error="OpenRouter API key not configured. Please add your API key in Settings."
+            )
+            yield json.dumps(error_chunk.model_dump(exclude_none=True))
+
+        return EventSourceResponse(error_generator())
+
+    # Create OracleAgent with user's settings
+    agent = OracleAgent(
+        api_key=openrouter_api_key,
+        model=request.model,  # None uses default
+        project_id=None,  # TODO: Get from request or detect
+        user_id=auth.user_id,
+    )
+
     async def event_generator() -> AsyncGenerator[str, None]:
-        """Generate SSE events from oracle stream."""
+        """Generate SSE events from OracleAgent stream."""
         try:
-            logger.info(f"Oracle streaming query from user {auth.user_id}: {request.question[:100]}")
+            logger.info(f"Oracle Agent query from user {auth.user_id}: {request.question[:100]}")
 
-            async for chunk in oracle.ask_oracle_stream(
-                user_id=auth.user_id,
+            async for chunk in agent.query(
                 question=request.question,
-                sources=request.sources,
-                explain=request.explain,
-                model=request.model,
+                user_id=auth.user_id,
+                stream=True,
                 thinking=request.thinking,
-                project=None,  # Auto-detect project
                 max_tokens=request.max_tokens,
-                openrouter_api_key=openrouter_api_key,
             ):
-                # Validate chunk against schema
-                try:
-                    validated_chunk = OracleStreamChunk(**chunk)
-                    # Yield as SSE data
-                    yield json.dumps(validated_chunk.model_dump(exclude_none=True))
-                except Exception as e:
-                    logger.error(f"Invalid chunk from oracle: {e}")
-                    # Send error chunk
-                    error_chunk = OracleStreamChunk(
-                        type="error",
-                        error=f"Invalid response format: {str(e)}"
-                    )
-                    yield json.dumps(error_chunk.model_dump(exclude_none=True))
-                    break
+                # OracleAgent yields OracleStreamChunk objects directly
+                yield json.dumps(chunk.model_dump(exclude_none=True))
 
-        except OracleBridgeError as e:
-            logger.error(f"Oracle bridge error: {e.message}")
+        except OracleAgentError as e:
+            logger.error(f"Oracle agent error: {e.message}")
             error_chunk = OracleStreamChunk(
                 type="error",
                 error=f"Oracle error: {e.message}"

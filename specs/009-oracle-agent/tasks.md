@@ -19,14 +19,14 @@
 
 **Purpose**: Create project structure and external prompts directory
 
-- [ ] T001 Create backend/prompts/ directory structure per plan.md
-- [ ] T002 [P] Create backend/prompts/oracle/system.md with Oracle system prompt
-- [ ] T003 [P] Create backend/prompts/oracle/synthesis.md with answer generation prompt
-- [ ] T004 [P] Create backend/prompts/oracle/compression.md with context compression prompt
-- [ ] T005 [P] Create backend/prompts/oracle/no_context.md with fallback response
-- [ ] T006 [P] Create backend/prompts/librarian/system.md with Librarian system prompt
-- [ ] T007 [P] Create backend/prompts/librarian/organize.md with organization task prompt
-- [ ] T008 Copy specs/009-oracle-agent/contracts/tools.json to backend/prompts/tools.json
+- [x] T001 Create backend/prompts/ directory structure per plan.md
+- [x] T002 [P] Create backend/prompts/oracle/system.md with Oracle system prompt
+- [x] T003 [P] Create backend/prompts/oracle/synthesis.md with answer generation prompt
+- [x] T004 [P] Create backend/prompts/oracle/compression.md with context compression prompt
+- [x] T005 [P] Create backend/prompts/oracle/no_context.md with fallback response
+- [x] T006 [P] Create backend/prompts/librarian/system.md with Librarian system prompt
+- [x] T007 [P] Create backend/prompts/librarian/organize.md with organization task prompt
+- [x] T008 Copy specs/009-oracle-agent/contracts/tools.json to backend/prompts/tools.json
 
 ---
 
@@ -36,13 +36,13 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T009 Create OracleContext Pydantic models in backend/src/models/oracle_context.py
-- [ ] T010 Add oracle_contexts table DDL to backend/src/services/database.py
-- [ ] T011 Create PromptLoader service in backend/src/services/prompt_loader.py
-- [ ] T012 Create ToolExecutor service in backend/src/services/tool_executor.py
-- [ ] T013 Create OracleAgent base class in backend/src/services/oracle_agent.py
-- [ ] T014 [P] Unit test for PromptLoader in backend/tests/unit/test_prompt_loader.py
-- [ ] T015 [P] Unit test for ToolExecutor in backend/tests/unit/test_tool_executor.py
+- [x] T009 Create OracleContext Pydantic models in backend/src/models/oracle_context.py
+- [x] T010 Add oracle_contexts table DDL to backend/src/services/database.py
+- [x] T011 Create PromptLoader service in backend/src/services/prompt_loader.py
+- [x] T012 Create ToolExecutor service in backend/src/services/tool_executor.py
+- [x] T013 Create OracleAgent base class in backend/src/services/oracle_agent.py
+- [x] T014 [P] Unit test for PromptLoader in backend/tests/unit/test_prompt_loader.py
+- [x] T015 [P] Unit test for ToolExecutor in backend/tests/unit/test_tool_executor.py
 
 **Checkpoint**: Foundation ready - user story implementation can begin
 
@@ -60,14 +60,14 @@
 
 ### Implementation for User Story 1
 
-- [ ] T017 [US1] Implement agent loop with OpenRouter in backend/src/services/oracle_agent.py
-- [ ] T018 [US1] Implement streaming response generator in backend/src/services/oracle_agent.py
-- [ ] T019 [US1] Wire existing code tools (search_code, find_definition, find_references) in backend/src/services/tool_executor.py
-- [ ] T020 [US1] Wire existing vault tools (vault_read, vault_search, vault_list) in backend/src/services/tool_executor.py
-- [ ] T021 [US1] Update POST /api/oracle/stream route to use OracleAgent in backend/src/api/routes/oracle.py
-- [ ] T022 [US1] Update POST /api/oracle route to use OracleAgent in backend/src/api/routes/oracle.py
-- [ ] T023 [US1] Add in-memory context tracking (session state) in backend/src/services/oracle_agent.py
-- [ ] T024 [US1] Add source citation formatting to streaming chunks in backend/src/services/oracle_agent.py
+- [x] T017 [US1] Implement agent loop with OpenRouter in backend/src/services/oracle_agent.py
+- [x] T018 [US1] Implement streaming response generator in backend/src/services/oracle_agent.py
+- [x] T019 [US1] Wire existing code tools (search_code, find_definition, find_references) in backend/src/services/tool_executor.py
+- [x] T020 [US1] Wire existing vault tools (vault_read, vault_search, vault_list) in backend/src/services/tool_executor.py
+- [x] T021 [US1] Update POST /api/oracle/stream route to use OracleAgent in backend/src/api/routes/oracle.py
+- [x] T022 [US1] Update POST /api/oracle route to use OracleAgent in backend/src/api/routes/oracle.py
+- [x] T023 [US1] Add in-memory context tracking (session state) in backend/src/services/oracle_agent.py
+- [x] T024 [US1] Add source citation formatting to streaming chunks in backend/src/services/oracle_agent.py
 
 **Checkpoint**: Web UI Oracle Q&A works with tool calling and citations
 

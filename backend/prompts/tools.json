@@ -1,0 +1,459 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Oracle Agent Tools",
+  "description": "Tool definitions for OpenRouter function calling",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "search_code",
+        "description": "Search the codebase for relevant code using hybrid retrieval (vector + BM25). Returns ranked code chunks with file paths and line numbers.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Natural language search query describing what code to find"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 5,
+              "description": "Maximum number of results to return"
+            },
+            "language": {
+              "type": "string",
+              "description": "Filter by programming language (e.g., 'python', 'typescript')"
+            }
+          },
+          "required": ["query"]
+        }
+      },
+      "agent_scope": ["oracle", "librarian"],
+      "category": "code"
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "find_definition",
+        "description": "Find where a symbol (function, class, variable) is defined in the codebase.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "symbol": {
+              "type": "string",
+              "description": "The symbol name to find (e.g., 'OracleAgent', 'search_code')"
+            },
+            "scope": {
+              "type": "string",
+              "description": "Limit search to a directory or file pattern"
+            }
+          },
+          "required": ["symbol"]
+        }
+      },
+      "agent_scope": ["oracle"],
+      "category": "code"
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "find_references",
+        "description": "Find all usages of a symbol throughout the codebase.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "symbol": {
+              "type": "string",
+              "description": "The symbol name to find references for"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20,
+              "description": "Maximum references to return"
+            }
+          },
+          "required": ["symbol"]
+        }
+      },
+      "agent_scope": ["oracle"],
+      "category": "code"
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "get_repo_map",
+        "description": "Get an overview of the repository structure showing key files, classes, and functions.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "description": "Directory to focus on (e.g., 'backend/src/services')"
+            },
+            "max_tokens": {
+              "type": "integer",
+              "minimum": 500,
+              "maximum": 8000,
+              "default": 2000,
+              "description": "Token budget for the map"
+            }
+          }
+        }
+      },
+      "agent_scope": ["oracle"],
+      "category": "code"
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "vault_read",
+        "description": "Read a markdown note from the documentation vault.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Path to the note (e.g., 'architecture/auth.md')"
+            }
+          },
+          "required": ["path"]
+        }
+      },
+      "agent_scope": ["oracle", "librarian"],
+      "category": "vault"
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "vault_write",
+        "description": "Create or update a markdown note in the vault. Use this to save research, decisions, or documentation.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Path for the note (e.g., 'research/auth-findings.md')"
+            },
+            "title": {
+              "type": "string",
+              "description": "Note title (used in frontmatter)"
+            },
+            "body": {
+              "type": "string",
+              "description": "Markdown content of the note"
+            }
+          },
+          "required": ["path", "body"]
+        }
+      },
+      "agent_scope": ["oracle", "librarian"],
+      "category": "vault"
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "vault_search",
+        "description": "Search the documentation vault using full-text search.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Search query"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 5,
+              "description": "Maximum results"
+            }
+          },
+          "required": ["query"]
+        }
+      },
+      "agent_scope": ["oracle", "librarian"],
+      "category": "vault"
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "vault_list",
+        "description": "List notes in a vault folder.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "folder": {
+              "type": "string",
+              "description": "Folder path (empty for root)"
+            }
+          }
+        }
+      },
+      "agent_scope": ["oracle", "librarian"],
+      "category": "vault"
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "vault_move",
+        "description": "Move or rename a note. Updates wikilinks automatically.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "old_path": {
+              "type": "string",
+              "description": "Current note path"
+            },
+            "new_path": {
+              "type": "string",
+              "description": "New note path"
+            }
+          },
+          "required": ["old_path", "new_path"]
+        }
+      },
+      "agent_scope": ["librarian"],
+      "category": "vault"
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "vault_create_index",
+        "description": "Create an index.md file for a folder with links to all notes in it.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "folder": {
+              "type": "string",
+              "description": "Folder to create index for"
+            },
+            "title": {
+              "type": "string",
+              "description": "Title for the index page"
+            },
+            "include_summaries": {
+              "type": "boolean",
+              "default": true,
+              "description": "Include first paragraph of each note"
+            }
+          },
+          "required": ["folder"]
+        }
+      },
+      "agent_scope": ["librarian"],
+      "category": "vault"
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "thread_push",
+        "description": "Record a thought, decision, or finding to long-term memory. Use this to save important context for future sessions.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "thread_id": {
+              "type": "string",
+              "description": "Thread identifier (e.g., 'auth-design', 'api-research')"
+            },
+            "content": {
+              "type": "string",
+              "description": "The thought or finding to record"
+            },
+            "entry_type": {
+              "type": "string",
+              "enum": ["thought", "decision", "research", "insight"],
+              "default": "thought",
+              "description": "Type of entry"
+            }
+          },
+          "required": ["thread_id", "content"]
+        }
+      },
+      "agent_scope": ["oracle"],
+      "category": "thread"
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "thread_read",
+        "description": "Read a thread to get context and summary of past work.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "thread_id": {
+              "type": "string",
+              "description": "Thread identifier"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 10,
+              "description": "Number of recent entries to include"
+            }
+          },
+          "required": ["thread_id"]
+        }
+      },
+      "agent_scope": ["oracle"],
+      "category": "thread"
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "thread_seek",
+        "description": "Search across all threads using semantic similarity to find relevant past context.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "What to search for in past threads"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 5,
+              "description": "Maximum results"
+            }
+          },
+          "required": ["query"]
+        }
+      },
+      "agent_scope": ["oracle"],
+      "category": "thread"
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "thread_list",
+        "description": "List all threads for the current project.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": ["active", "archived", "all"],
+              "default": "active",
+              "description": "Filter by status"
+            }
+          }
+        }
+      },
+      "agent_scope": ["oracle"],
+      "category": "thread"
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "web_search",
+        "description": "Search the web for information. Use for external documentation, library APIs, or current information.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Search query"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10,
+              "default": 5,
+              "description": "Number of results"
+            }
+          },
+          "required": ["query"]
+        }
+      },
+      "agent_scope": ["oracle"],
+      "category": "web"
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "web_fetch",
+        "description": "Fetch and extract content from a URL. Returns cleaned text suitable for context.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL to fetch"
+            },
+            "max_tokens": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 4000,
+              "default": 1000,
+              "description": "Max tokens to extract"
+            }
+          },
+          "required": ["url"]
+        }
+      },
+      "agent_scope": ["oracle"],
+      "category": "web"
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "delegate_librarian",
+        "description": "Delegate a vault organization task to the Librarian subagent. Use for reorganizing files, creating indexes, or cleaning up documentation.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "task": {
+              "type": "string",
+              "description": "Description of what the Librarian should do"
+            },
+            "files": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "Specific files to operate on (optional)"
+            },
+            "folder": {
+              "type": "string",
+              "description": "Target folder for organization (optional)"
+            }
+          },
+          "required": ["task"]
+        }
+      },
+      "agent_scope": ["oracle"],
+      "category": "meta"
+    }
+  ],
+  "agent_definitions": {
+    "oracle": {
+      "name": "Oracle",
+      "description": "Main AI project manager agent",
+      "system_prompt_path": "oracle/system.md",
+      "tools": [
+        "search_code", "find_definition", "find_references", "get_repo_map",
+        "vault_read", "vault_write", "vault_search", "vault_list",
+        "thread_push", "thread_read", "thread_seek", "thread_list",
+        "web_search", "web_fetch", "delegate_librarian"
+      ],
+      "max_turns": 15
+    },
+    "librarian": {
+      "name": "Librarian",
+      "description": "Subagent specialized for vault organization",
+      "system_prompt_path": "librarian/system.md",
+      "tools": [
+        "vault_read", "vault_write", "vault_search", "vault_list",
+        "vault_move", "vault_create_index", "search_code"
+      ],
+      "max_turns": 10,
+      "model_override": "deepseek/deepseek-chat"
+    }
+  }
+}

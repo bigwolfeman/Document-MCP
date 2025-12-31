@@ -133,6 +133,29 @@ DDL_STATEMENTS: tuple[str, ...] = (
         tokenize='porter unicode61'
     )
     """,
+    # Oracle context persistence (009-oracle-agent T010)
+    """
+    CREATE TABLE IF NOT EXISTS oracle_contexts (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        session_start TEXT NOT NULL,
+        last_activity TEXT,
+        last_model TEXT,
+        token_budget INTEGER DEFAULT 16000,
+        tokens_used INTEGER DEFAULT 0,
+        compressed_summary TEXT,
+        recent_exchanges_json TEXT DEFAULT '[]',
+        key_decisions_json TEXT DEFAULT '[]',
+        mentioned_symbols TEXT,
+        mentioned_files TEXT,
+        status TEXT DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'closed')),
+        compression_count INTEGER DEFAULT 0,
+        UNIQUE(user_id, project_id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_oracle_contexts_user_project ON oracle_contexts(user_id, project_id)",
+    "CREATE INDEX IF NOT EXISTS idx_oracle_contexts_last_activity ON oracle_contexts(last_activity)",
 )
 
 # Migration statements for existing databases

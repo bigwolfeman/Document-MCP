@@ -31,11 +31,13 @@ class OracleRequest(BaseModel):
 
 class OracleStreamChunk(BaseModel):
     """Server-sent event chunk for streaming responses."""
-    type: Literal["thinking", "content", "source", "done", "error"] = Field(
+    type: Literal["thinking", "content", "source", "tool_call", "tool_result", "done", "error"] = Field(
         ..., description="Chunk type"
     )
     content: Optional[str] = Field(None, description="Text content for thinking/content chunks")
     source: Optional[SourceReference] = Field(None, description="Source citation for source chunks")
+    tool_call: Optional[Dict[str, Any]] = Field(None, description="Tool call info (tool_call chunks)")
+    tool_result: Optional[str] = Field(None, description="Tool result (tool_result chunks)")
     tokens_used: Optional[int] = Field(None, description="Total tokens used (done chunk only)")
     model_used: Optional[str] = Field(None, description="Model used (done chunk only)")
     error: Optional[str] = Field(None, description="Error message (error chunk only)")
