@@ -17,6 +17,7 @@ import { NoteViewer } from '@/components/NoteViewer';
 import { NoteViewerSkeleton } from '@/components/NoteViewerSkeleton';
 import { NoteEditor } from '@/components/NoteEditor';
 import { ChatPanel } from '@/components/ChatPanel';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useToast } from '@/hooks/useToast';
 import { GraphView } from '@/components/GraphView';
 import { GlowParticleEffect } from '@/components/GlowParticleEffect';
@@ -27,6 +28,7 @@ import {
   getIndexHealth,
   createNote,
   moveNote,
+  searchNotes,
   type BacklinkResult,
   APIException,
 } from '@/services/api';
@@ -48,6 +50,7 @@ import { AUTH_TOKEN_CHANGED_EVENT, isDemoSession, login } from '@/services/auth'
 import { synthesizeTts } from '@/services/tts';
 import { markdownToPlainText } from '@/lib/markdownToText';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
+import { getModelSettings } from '@/services/models';
 
 export function MainApp() {
   const navigate = useNavigate();
@@ -70,6 +73,8 @@ export function MainApp() {
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(isDemoSession());
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isChatCenterView, setIsChatCenterView] = useState(false);
+  const [chatCenterMode, setChatCenterMode] = useState(false);
   const [graphRefreshTrigger, setGraphRefreshTrigger] = useState(0);
   const [isSynthesizingTts, setIsSynthesizingTts] = useState(false);
   const ttsUrlRef = useRef<string | null>(null);
@@ -111,6 +116,19 @@ export function MainApp() {
     return () => {
       window.removeEventListener(AUTH_TOKEN_CHANGED_EVENT, handleAuthChange);
     };
+  }, []);
+
+  // Load chat center mode setting on mount
+  useEffect(() => {
+    const loadChatCenterMode = async () => {
+      try {
+        const settings = await getModelSettings();
+        setChatCenterMode(settings.chat_center_mode);
+      } catch (err) {
+        console.debug('Failed to load model settings for chat center mode:', err);
+      }
+    };
+    loadChatCenterMode();
   }, []);
 
   useEffect(() => {
@@ -200,33 +218,78 @@ export function MainApp() {
     loadNote();
   }, [selectedPath]);
 
-  // Handle wikilink clicks
+  // Handle wikilink clicks - prioritizes exact matches over search
   const handleWikilinkClick = async (linkText: string) => {
+    console.log(`[Wikilink] Clicked: "${linkText}"`);
+
+    // Normalize the link text for matching
+    const linkLower = linkText.toLowerCase().replace(/\.md$/i, '');
+
+    // 1. Try exact path match (e.g., "docs/Architecture Overview.md" or "docs/Architecture Overview")
+    let targetNote = notes.find((note) => {
+      const pathLower = note.note_path.toLowerCase();
+      const pathWithoutExt = pathLower.replace(/\.md$/i, '');
+      return pathLower === linkText.toLowerCase() || pathWithoutExt === linkLower;
+    });
+
+    if (targetNote) {
+      console.log(`[Wikilink] Exact path match: ${targetNote.note_path}`);
+      setSelectedPath(targetNote.note_path);
+      return;
+    }
+
+    // 2. Try exact title match (e.g., "Getting Started" matches note with title "Getting Started")
+    targetNote = notes.find((note) =>
+      note.title.toLowerCase() === linkLower ||
+      note.title.toLowerCase() === linkText.toLowerCase()
+    );
+
+    if (targetNote) {
+      console.log(`[Wikilink] Exact title match: ${targetNote.note_path}`);
+      setSelectedPath(targetNote.note_path);
+      return;
+    }
+
+    // 3. Try slug-based matching (partial/fuzzy)
     const slug = normalizeSlug(linkText);
-    console.log(`[Wikilink] Clicked: "${linkText}", Slug: "${slug}"`);
-    
-    // Try to find exact match first
-    let targetNote = notes.find(
+    console.log(`[Wikilink] Trying slug match: "${slug}"`);
+
+    targetNote = notes.find(
       (note) => normalizeSlug(note.title) === slug
     );
 
-    // If not found, try path-based matching
     if (!targetNote) {
       targetNote = notes.find((note) => {
         const pathSlug = normalizeSlug(note.note_path.replace(/\.md$/, ''));
-        // console.log(`Checking path: ${note.note_path}, Slug: ${pathSlug}`);
         return pathSlug.endsWith(slug);
       });
     }
 
     if (targetNote) {
-      console.log(`[Wikilink] Found target: ${targetNote.note_path}`);
+      console.log(`[Wikilink] Slug match found: ${targetNote.note_path}`);
       setSelectedPath(targetNote.note_path);
-    } else {
-      // TODO: Show "Create note" dialog
-      console.log('Note not found for wikilink:', linkText);
-      setError(`Note not found: ${linkText}`);
+      return;
     }
+
+    // 4. Last resort: try search API (may return content matches)
+    try {
+      console.log(`[Wikilink] No local match, trying search API`);
+      const searchResults = await searchNotes(linkText);
+
+      if (searchResults.length > 0) {
+        // Only use search if result title/path is reasonably close to what we're looking for
+        const firstResult = searchResults[0];
+        console.log(`[Wikilink] Search returned: ${firstResult.note_path}`);
+        setSelectedPath(firstResult.note_path);
+        return;
+      }
+    } catch (err) {
+      console.warn(`[Wikilink] Search failed:`, err);
+    }
+
+    // Note not found
+    console.log('[Wikilink] Note not found for:', linkText);
+    setError(`Note not found: ${linkText}`);
   };
 
   const handleTtsToggle = async () => {
@@ -284,6 +347,7 @@ export function MainApp() {
     setSelectedPath(path);
     setError(null);
     setIsEditMode(false); // Exit edit mode when switching notes
+    setIsChatCenterView(false); // Exit chat center view when switching notes
   };
 
   // Refresh all views when notes are changed
@@ -574,17 +638,40 @@ export function MainApp() {
               </Button>
             )}
             <Button
-              variant={isChatOpen ? "secondary" : "ghost"}
+              variant={(chatCenterMode ? isChatCenterView : isChatOpen) ? "secondary" : "ghost"}
               size="sm"
-              onClick={() => setIsChatOpen(!isChatOpen)}
-              title={isChatOpen ? "Close Chat" : "Open AI Planning Agent"}
+              onClick={() => {
+                if (chatCenterMode) {
+                  const newChatCenterView = !isChatCenterView;
+                  setIsChatCenterView(newChatCenterView);
+                  // Exit edit and graph modes when entering chat center view
+                  if (newChatCenterView) {
+                    setIsEditMode(false);
+                    setIsGraphView(false);
+                  }
+                } else {
+                  setIsChatOpen(!isChatOpen);
+                }
+              }}
+              title={
+                chatCenterMode
+                  ? (isChatCenterView ? "Close Chat" : "Open AI Planning Agent")
+                  : (isChatOpen ? "Close Chat" : "Open AI Planning Agent")
+              }
             >
               <MessageCircle className="h-4 w-4" />
             </Button>
             <Button
               variant={isGraphView ? "secondary" : "ghost"}
               size="sm"
-              onClick={() => setIsGraphView(!isGraphView)}
+              onClick={() => {
+                const newGraphView = !isGraphView;
+                setIsGraphView(newGraphView);
+                // Exit chat center view when entering graph view
+                if (newGraphView) {
+                  setIsChatCenterView(false);
+                }
+              }}
               title={isGraphView ? "Switch to Note View" : "Switch to Graph View"}
               className="transition-all duration-250 ease-out"
             >
@@ -735,7 +822,17 @@ export function MainApp() {
                 </div>
               )}
 
-              {isGraphView ? (
+              {isChatCenterView ? (
+                <ErrorBoundary>
+                  <ChatPanel
+                    onNavigateToNote={(path) => {
+                      handleWikilinkClick(path);
+                      setIsChatCenterView(false);
+                    }}
+                    onNotesChanged={refreshAll}
+                  />
+                </ErrorBoundary>
+              ) : isGraphView ? (
                 <GraphView
                   onSelectNote={(path) => {
                     handleSelectNote(path);
@@ -786,14 +883,16 @@ export function MainApp() {
             </div>
           </ResizablePanel>
 
-          {isChatOpen && (
+          {isChatOpen && !chatCenterMode && (
             <>
               <ResizableHandle withHandle />
               <ResizablePanel defaultSize={25} minSize={20} maxSize={40} className="animate-slide-in">
-                <ChatPanel
-                  onNavigateToNote={handleSelectNote}
-                  onNotesChanged={refreshAll}
-                />
+                <ErrorBoundary>
+                  <ChatPanel
+                    onNavigateToNote={handleWikilinkClick}
+                    onNotesChanged={refreshAll}
+                  />
+                </ErrorBoundary>
               </ResizablePanel>
             </>
           )}

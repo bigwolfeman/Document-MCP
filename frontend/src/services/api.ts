@@ -34,7 +34,7 @@ declare global {
 /**
  * Get the current bearer token from localStorage
  */
-function getAuthToken(): string | null {
+export function getAuthToken(): string | null {
   return localStorage.getItem('auth_token');
 }
 
